@@ -1,0 +1,268 @@
+<script>
+  // ==========================================
+  // MACROS & SCRIPTING DATABASE
+  // ==========================================
+  const MACRO_DATABASE = [
+    // --- GENERICS ---
+    {
+      merchant: "Generic Subscription",
+      isGeneric: true,
+      contact: "N/A",
+      wording: `I've checked and can see this payment is part of a subscription. Subscriptions can get set up after entering your card details on a website. It could have been for a competition, a free trial or a promotion by the retailer. If you've entered your card details on a website, I suggest you contact the retailer to discuss this payment. They'll be able to give you more information about it and may be able to offer you a refund. In the meantime, you can lock your card in the app, while you look into it with them.`
+    },
+    {
+      merchant: "Retailer Unrecognised - Mismatch Name",
+      isGeneric: true,
+      contact: "N/A",
+      wording: `I've checked the reference which might help you recognise it. The reference is: [INSERT REFERENCE HERE]. You can check it by tapping the payment on your home screen. Sometimes the retailer's name is a bit different from what you would expect. You can report this in the App - just below the reference select 'Improve' and fill in the correct details. We're sorry for any confusion!`
+    },
+    {
+      merchant: "Adult Entertainment",
+      isGeneric: true,
+      contact: "N/A",
+      wording: `I've checked and can see this payment is for a company that offers adult entertainment services. They use a discreet name which may be why you don't recognise it. Usually, the company ask you to confirm your age using your card details as part of this you agree to a paid subscription. If you didn't know you were signing up for a subscription - I suggest you contact the company directly. You can request a refund and manage your subscription with them. In the meantime, you can lock your card in the app, while you look into it with them.`
+    },
+
+    // --- SPECIFIC MERCHANTS ---
+    {
+      merchant: "Amazon (General)",
+      isGeneric: false,
+      contact: "https://www.amazon.co.uk/gp/help/customer/display.html?nodeId=201895580 or call 0800 279 7234",
+      wording: `I've checked and can see this payment is for Amazon. As you have used Amazon in the past we suggest you contact Amazon in the first instance. Sometimes Amazon splits orders into separate deliveries and completes the payment separately. Amazon can give you more information about the payment. If you don't recognise it, could someone else have used your Amazon account? You can lock your card in the app, while you look into it with Amazon. Amazon has some helpful checks for you to do on their website.`
+    },
+    {
+      merchant: "Amazon Prime",
+      isGeneric: false,
+      contact: "https://www.amazon.co.uk/gp/help/customer/display.html?nodeId=GU8AWX4GDKM7QGTE",
+      wording: `I've checked and can see this payment is for Amazon Prime. It's a paid subscription for extra services including free next-day delivery. I'd suggest you contact Amazon to discuss this payment. They'll be able to give you more information about it and may be able to offer you a refund.`
+    },
+    {
+      merchant: "Bolt",
+      isGeneric: false,
+      contact: "https://bolt.eu/en-gb/",
+      wording: `I've checked and can see this payment is for Bolt, a taxi/ride sharing app. As you have used Bolt in the past I suggest you contact them first. They should be able to confirm what this payment is for. You can contact Bolt via their app or on their website. In the meantime, you can lock your card in the app, while you look into it with them.`
+    },
+    {
+      merchant: "Completesave/Savings",
+      isGeneric: false,
+      contact: "https://www.completesavings.co.uk/contact-us",
+      wording: `I've checked and can see this payment is for CompleteSavings. On your bank statement, it may show under a different name but usually has COMPLETESAVE in it. CompleteSavings is a third-party cashback company that partners with many retailers online. After completing your purchase, it will ask if you would like cashback on your next one. If you click this, you start a free trial with them. If you don't cancel this before the end of the free trial, they will charge your account. If you weren't aware you were signing up for a subscription - I'd suggest you contact CompleteSave. You can request a refund and manage your subscription directly with them.`
+    },
+    {
+      merchant: "Curve",
+      isGeneric: false,
+      contact: "https://www.curve.com/en-gb/",
+      wording: `I can see this payment is to Curve. Curve is a debit card that you can link to your existing debit or credit cards, so you only need to carry one. If you select to use your Starling card with Curve, the payment will show as Curve on the Starling app. As Curve have the payment, you would need to contact them if you need help. You can also raise a dispute with them using their online form.`
+    },
+    {
+      merchant: "DAZN",
+      isGeneric: false,
+      contact: "https://www.dazn.com/en-GB/home",
+      wording: `I've checked and can see this payment is for DAZN. They offer streaming of pay-per-view live boxing and fighting. You'll usually find DAZN in the payment reference on the transaction history in the app. The first payment is normally approved in the Starling app. This then starts your subscription with them. If you didn't know you were signing up for a subscription, I suggest you contact DAZN. In the meantime, you can lock your card in the app while you look into it with them.`
+    },
+    {
+      merchant: "Deliveroo",
+      isGeneric: false,
+      contact: "Deliveroo App",
+      wording: `I've checked and can see this payment is for Deliveroo Plus. This is a paid subscription that gives you perks like free delivery. You may have signed up as part of a free trial or promotion - they'll charge you once this period ends. You can contact them for more information about the payment and a possible refund. You can check your subscription in the Deliveroo app.`
+    },
+    {
+      merchant: "eDreams Prime/Opodo",
+      isGeneric: false,
+      contact: "https://www.edreams.com/blog/contact-edreams-customer-service/",
+      wording: `I've checked and can see this payment is for eDreams Prime/Opodo. You'll have subscribed to this as part of a booking with eDreams/Opodo. It's usually free for the first 30 days. If you don't cancel this before the end of this period, they will charge you a yearly fee. If you weren't aware you were signing up for a subscription - I'd suggest you contact eDreams Prime/Opodo. You can request a refund and manage your subscription with them.`
+    },
+    {
+      merchant: "Experian",
+      isGeneric: false,
+      contact: "https://www.experian.co.uk/ or call 0800 013 8888",
+      wording: `I've checked and can see this payment is for Experian. Experian is a credit agency that lets you know your credit score, report and much more. They offer an upgrade service that usually starts with a free trial. If you don't cancel this before the end of the free trial, they will charge your account. If you didn't know you were signing up for a subscription - I'd suggest you contact Experian.`
+    },
+    {
+      merchant: "Fabletics",
+      isGeneric: false,
+      contact: "https://www.fabletics.co.uk/",
+      wording: `I've checked and can see this payment is for Fabletics. They offer a VIP membership that gives credits for you to use on purchases. It usually starts with a free trial. If you don't cancel this before the end of the free trial, they will charge your account. If you didn't know you were signing up for a subscription - I suggest you contact Fabletics.`
+    },
+    {
+      merchant: "GoCardless",
+      isGeneric: false,
+      contact: "https://gocardless.com/payment-lookup/",
+      wording: `I've checked and can see this payment is for GoCardless. They process Direct Debit payments on behalf of other businesses. GoCardless will show on your account rather than the name of the retailer. Sometimes the reference will show who the payment is for. If you have a query about your GoCardless payments you can check what the payment is for on their website.`
+    },
+    {
+      merchant: "Google Play",
+      isGeneric: false,
+      contact: "https://support.google.com/?hl=en-GB",
+      wording: `I've checked and can see this payment is for Google Play. As you have an Android device, this means you'd have a Google account. You should be able to see this payment on your device by following these steps to view the full purchase history: Open the Google Play app > Tap the Icon > Tap Payments and Subscriptions > Budget and History. If you weren't expecting this charge - I suggest you contact Google.`
+    },
+    {
+      merchant: "Google Temporary Hold",
+      isGeneric: false,
+      contact: "https://pay.google.com/intl/en/uk/about/",
+      wording: `I've checked and can see this payment is a temporary hold which is linked to another payment you have made. Google will hold a temporary amount before the payment goes through. When the payment goes through, the hold will then reverse. If you weren't expecting this charge - I suggest you contact Google.`
+    },
+    {
+      merchant: "Hatchster Limited (Lotto Social)",
+      isGeneric: false,
+      contact: "https://lottosocial.com/ or call 01618 504 402",
+      wording: `I've checked and can see this subscription is for Hatchster Ltd. These payments are usually linked to Lotto Social. Lotto Social subscriptions usually start with a discounted or free lottery ticket. If you don't cancel this before the end of the free period, they will charge your account. If you didn't know you were signing up for a subscription - I suggest you contact Lotto Social.`
+    },
+    {
+      merchant: "HelloFresh",
+      isGeneric: false,
+      contact: "https://www.hellofresh.co.uk/",
+      wording: `I've checked and can see this payment is for HelloFresh. HelloFresh is a flexible meal subscription service. You can change, pause, or cancel 5 days before your next delivery. They don't charge you for your first order until the day after the deadline. I suggest you contact HelloFresh. You can request a refund and manage your subscription with them.`
+    },
+    {
+      merchant: "iTunes/App Store",
+      isGeneric: false,
+      contact: "https://support.apple.com/en-us/108092",
+      wording: `I've checked and can see this subscription is for iTunes/Apple Store - this could be for Apps, Games, Storage or Music. As you have an Apple device, this means you have an account with them. You should be able to see this payment on your device by following these steps to view the full purchase history: Settings > Tap Apple ID > Media & Purchases > Purchase History. You can request a refund and manage your subscription with them.`
+    },
+    {
+      merchant: "JustAnswer",
+      isGeneric: false,
+      contact: "https://www.justanswer.com/",
+      wording: `I've checked and can see this subscription is for JustAnswer. They offer a subscription service where you can ask for advice from an Expert. It usually starts with a free trial. If you don't cancel this before the end of the free trial, they will charge your account. If you didn't know you were signing up for a subscription - I suggest you contact JustAnswer.`
+    },
+    {
+      merchant: "Just Eat",
+      isGeneric: false,
+      contact: "https://www.just-eat.co.uk/help",
+      wording: `I've checked and can see this payment is to Just Eat who offer food delivery. If you have used Just Eat in the past I suggest you contact them directly. They should be able to confirm what this payment is for. You can contact Just Eat via their app or on their website.`
+    },
+    {
+      merchant: "Klarna",
+      isGeneric: false,
+      contact: "https://www.klarna.com/uk/customer-service",
+      wording: `I've checked and can see this payment is for Klarna. They partner with many retailers to offer a buy now, pay later service. Klarna will show on your account rather than the name of the retailer. If you have a query about your Klarna payments, then you should contact them or the retailer directly.`
+    },
+    {
+      merchant: "Microsoft Xbox",
+      isGeneric: false,
+      contact: "https://www.xbox.com/en-GB/",
+      wording: `I've checked and can see this payment is for Xbox. These charges are often made directly from the Xbox console or as part of a subscription. When you add your card to a Microsoft account, they are often saved. Anyone with access to the account can then make purchases. I suggest you contact Microsoft. You can request a refund and manage your subscription with them.`
+    },
+    {
+      merchant: "My Time Reward",
+      isGeneric: false,
+      contact: "https://www.mytimerewards.co.uk/",
+      wording: `I've checked and can see this payment is for MyTimeRewards. They are a third-party cashback company that partners with many retailers online. After completing your purchase, it will ask if you would like cashback on your next one. If you click this, you start a free trial with them. If you don't cancel this before the end of the free trial, they will charge your account. If you weren't aware you were signing up for a subscription - I'd suggest you contact MyTimeRewards.`
+    },
+    {
+      merchant: "National Express Rewards",
+      isGeneric: false,
+      contact: "https://www.nationalexpress.com/en",
+      wording: `I've checked and can see this payment is for NX Rewards from National Express. They are a third-party cashback company that partners with many retailers online. After completing your purchase, it will ask if you would like cashback on your next one. If you click this, you start a free trial with them. If you weren't aware you were signing up for a subscription - I'd suggest you contact National Express.`
+    },
+    {
+      merchant: "Now TV",
+      isGeneric: false,
+      contact: "https://www.nowtv.com/",
+      wording: `I've checked and can see this payment is for Now TV. They allow you to stream the latest movies, tv series, live sports and kids entertainment on demand. It usually starts with a free trial, or a reduced fee for a limited time. If you don't cancel this before the offer has ended, they will charge your account. If you didn't know you were signing up for subscription I suggest you contact Now TV.`
+    },
+    {
+      merchant: "NYX",
+      isGeneric: false,
+      contact: "N/A",
+      wording: `I've checked and can see that the reference for this payment starts with NYX. These payments are usually to companies that operate vending machines or public phones. The location on these payments will show the company's head office address and may not be the same as where you made the payment. I hope that this helps you to recognise the payment.`
+    },
+    {
+      merchant: "Offline Airline payment including Dnata & Newrest Catering",
+      isGeneric: false,
+      contact: "N/A",
+      wording: `I've checked and can see this payment is for in-flight sales. If you've recently bought something on a flight, this will explain this payment. Due to the way airlines complete these payments, it will not come through to us until a few days after you've landed. I hope you have/had a good trip!`
+    },
+    {
+      merchant: "Only Fans (OF)",
+      isGeneric: false,
+      contact: "www.onlyfans.com/contact",
+      wording: `I've checked and can see this payment is for Only Fans and could relate to a subscription. You may have signed up for a free trial with Only Fans, after which charges for a subscription would begin. If you weren't aware you were signing up for a subscription - I'd suggest you contact Only Fans.`
+    },
+    {
+      merchant: "On Top Up",
+      isGeneric: false,
+      contact: "https://ontopup.com/",
+      wording: `I've checked and can see this payment is for On Top Up. They offer top up vouchers and credit for Pay As You Go mobile phones. After completing your purchase, the retailer automatically sets up an Auto-Top-Up subscription. On Top Up is wholly owned by Surestream Digital and this name may show on your statement. If you didn't know you were signing up for a subscription - I'd suggest you contact On Top Up.`
+    },
+    {
+      merchant: "Packlink",
+      isGeneric: false,
+      contact: "https://www.packlink.com/en-GB/",
+      wording: `I've checked and can see this payment is for Packlink. Packlink is an online service that allows you to compare delivery services. You can pre-pay for postage with them and they are often used for eBay sales. Packlink may charge you more based on the parcel they receive for example if it's bigger or heavier than declared. I suggest you contact Packlink directly to look into this further.`
+    },
+    {
+      merchant: "Paramount Plus",
+      isGeneric: false,
+      contact: "https://www.paramountplus.com/gb/",
+      wording: `I've checked and can see this payment is for Paramount Plus. They allow you to stream the latest movies and tv series on demand. It usually starts with a free trial. If you don't cancel this before the offer has ended, they will charge your account. If you didn't know you were signing up for a subscription, I suggest you contact Paramount Plus.`
+    },
+    {
+      merchant: "Paypal",
+      isGeneric: false,
+      contact: "https://www.paypal.com/uk/home",
+      wording: `I've checked and can see this payment was made using PayPal. If you have a PayPal account or you've used them in the past, you should log in and check your recent payments. If you weren't expecting it and it's showing on your PayPal account - you should raise a dispute with them. If you don't have a PayPal account and haven't used them in the past, please let me know right away.`
+    },
+    {
+      merchant: "PlayerLands",
+      isGeneric: false,
+      contact: "support@playerlands.com",
+      wording: `I've checked and can see this payment is for Playerlands. They are a payments provider for games and websites they partner with many retailers online. You can usually find the retailer's name included in the payment information. If you didn't know you were signing up for a subscription - I suggest you contact Playerlands via email at support@playerlands.com.`
+    },
+    {
+      merchant: "PlayStation",
+      isGeneric: false,
+      contact: "https://www.playstation.com/en-gb/",
+      wording: `I've checked and can see this payment is for PlayStation. These charges are often made directly from the Playstation console or as part of a subscription. When you add your card to a Playstation account, they are often saved. Anyone with access to the account can then make purchases. I suggest you contact PlayStation. You can request a refund and manage your subscription with them.`
+    },
+    {
+      merchant: "Spotify",
+      isGeneric: false,
+      contact: "https://support.spotify.com/uk/",
+      wording: `I've checked and can see this payment is for Spotify. They offer a premium subscription for music streaming. It often starts with a free trial. If you don't cancel this before the end of the trial, they will charge your account. If you didn't know you were signing up for a subscription - I suggest you contact Spotify.`
+    },
+    {
+      merchant: "Stagecoach",
+      isGeneric: false,
+      contact: "https://www.stagecoachbus.com/",
+      wording: `I've checked and can see this payment is for Stagecoach. Stagecoach uses pay as you go travel. You just tap on and off and they'll charge you the right amount it might take a few days to show on your account. You can contact Stagecoach Customer Service to query the payment.`
+    },
+    {
+      merchant: "Public Transport/TfL",
+      isGeneric: false,
+      contact: "https://tfl.gov.uk/fares/refunds-and-replacements",
+      wording: `When you use your card on public transport (such as TfL) they'll perform a quick check that takes a small charge - it's usually 10p. After a few days, they'll update the amount once they work out your fare. If you think they've overcharged you, you'll need to contact them to challenge this. Payments on public transport are often claimed 'offline' - sometimes a few days after you made the journey.`
+    },
+    {
+      merchant: "Uber",
+      isGeneric: false,
+      contact: "https://help.uber.com/",
+      wording: `I've checked and can see this payment is for Uber. As you have used Uber in the past I suggest you contact Uber in the first instance. They should be able to confirm what this payment is for. You can contact Uber via their app or on their website and search for unrecognised charges.`
+    },
+    {
+      merchant: "Uber One",
+      isGeneric: false,
+      contact: "https://help.uber.com/riders/article/how-do-i-cancel-my-uber-one-membership",
+      wording: `I've checked and can see this payment is for Uber One. It's a membership to save on Uber and Uber Eats. You can contact Uber on their app or on their website.`
+    },
+    {
+      merchant: "Vehicle Information",
+      isGeneric: false,
+      contact: "https://vehicleenquiry.uk/",
+      wording: `I've checked and can see this payment is for VehicleEnquiry. Their membership alerts you when your MOT, tax, insurance, etc. are due. It usually starts with a trial promotion. If you don't cancel this before the end of the trial, they will charge your account. If you didn't know you were signing up for a subscription - I suggest you contact VehicleEnquiry.`
+    },
+    {
+      merchant: "YouTube Premium",
+      isGeneric: false,
+      contact: "https://support.google.com/youtube/answer/6308278?hl=en-GB",
+      wording: `I've checked and can see this payment is for YouTube Premium. It gives you access to YouTube and YouTube Music ad-free, offline, and in the background. It usually starts with a free trial. If you don't cancel this before the end of the trial, they will charge your account. If you didn't know you were signing up for a subscription - I suggest you contact YouTube Premium.`
+    },
+    {
+      merchant: "NYA*Air-Serv",
+      isGeneric: false,
+      contact: "N/A",
+      wording: `I've checked and can see this payment is for NYA Air-Serv. They supply machines at petrol station forecourts. This is when you pump up your tyres or when you use the jet wash.`
+    }
+  ];
+</script>
