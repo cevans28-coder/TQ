@@ -1,0 +1,1310 @@
+<script>
+  // ==========================================
+  // 1. GLOBAL STATE & BANNER
+  // ==========================================
+  const appState = {
+    rawText: "",
+    statementData: [],
+    selectedTransactions: [],
+    merchantHistory: [],
+    parsedData: {}, // Acts as the "primary" transaction for routing
+    acsData: null,
+    flags: {
+      cardPresent: false,
+      is3dsVerified: false,
+      outcome: null,
+      merchantHistoryCount: 0,
+      lastUsedDate: ""
+    }
+  };
+
+  let viewHistory = [];
+  let selectedTxIndices = new Set(); // Tracks checkboxes
+
+  // Clean Date Formatter
+  function formatPrettyDate(dateStr) {
+    if (!dateStr) return "Unknown Date";
+    try {
+      const d = new Date(dateStr);
+      if (isNaN(d.getTime())) return dateStr.split('T')[0]; 
+      return d.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) + 
+             " " + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute:'2-digit' });
+    } catch(e) { return dateStr; }
+  }
+
+  function updateActiveBanner(viewId) {
+    const banner = document.getElementById('active-tx-banner');
+    if (viewId === 'view-paste' || !appState.parsedData.amount) {
+      if(banner) banner.style.display = 'none';
+      return;
+    }
+    
+    const data = appState.parsedData;
+    document.getElementById('banner-amount').innerText = `${data.currency} ${data.amount}`;
+    document.getElementById('banner-merchant').innerText = data.counterparty;
+    document.getElementById('banner-date').innerText = formatPrettyDate(data.dateTime).split(',')[0];
+    document.getElementById('banner-type').innerText = data.transactionType;
+    
+    if(banner) banner.style.display = 'flex';
+  }
+
+  // ==========================================
+  // 2. ROUTING ENGINE
+  // ==========================================
+  function navigateToView(viewId, isBackAction = false) {
+    const currentView = document.querySelector('.view-section.active');
+    const targetView = document.getElementById(viewId);
+    
+    if (!targetView) return;
+    if (currentView && !isBackAction) viewHistory.push(currentView.id);
+
+    if (currentView) currentView.classList.remove('active');
+    targetView.classList.add('active');
+    
+    const backBtn = document.getElementById('btn-back');
+    if(backBtn) backBtn.style.display = viewHistory.length > 0 ? 'block' : 'none';
+    
+    const skipDrop = document.getElementById('skip-dropdown');
+    if(skipDrop) skipDrop.value = viewId;
+    
+    updateActiveBanner(viewId);
+
+    // Fire Init
+    if (viewId === 'view-step1') view_step1_init();
+    if (viewId === 'view-step2') view_step2_init();
+    if (viewId === 'view-holding') view_holding_init();
+    if (viewId === 'view-outcomes') view_outcomes_init();
+    if (viewId === 'view-pos-check') view_pos_check_init();
+  }
+
+  function goBack() {
+    if (viewHistory.length > 0) navigateToView(viewHistory.pop(), true);
+  }
+
+  function handleSkip(selectElement) {
+    navigateToView(selectElement.value);
+  }
+
+  function resetApp() {
+    appState.statementData = [];
+    appState.selectedTransactions = [];
+    appState.parsedData = {};
+    appState.merchantHistory = [];
+    selectedTxIndices.clear();
+    viewHistory = [];
+    
+    navigateToView('view-paste');
+    document.getElementById('paste-input').value = '';
+    document.getElementById('tx-selection-area').style.display = 'none';
+  }
+
+  // ==========================================
+  // 3. VIEW CONTROLLERS
+  // ==========================================
+
+  // --- View Paste: CSV & Multi-Select ---
+  function handleCsvPaste() {
+    const rawText = document.getElementById('paste-input').value.trim();
+    const errorDiv = document.getElementById('paste-error');
+    const btn = document.getElementById('btn-parse');
+    
+    if (!rawText) {
+      errorDiv.innerText = "Please paste the CSV data first.";
+      errorDiv.style.display = "block";
+      return;
+    }
+    
+    errorDiv.style.display = "none";
+    btn.innerText = "Loading...";
+    btn.disabled = true;
+    
+    google.script.run
+      .withSuccessHandler(function(response) {
+        btn.innerText = "Load Transactions";
+        btn.disabled = false;
+        
+        if (!response.success) {
+          errorDiv.innerText = response.error;
+          errorDiv.style.display = "block";
+          return;
+        }
+        
+        appState.statementData = response.data; 
+        selectedTxIndices.clear();
+        renderTransactionTable(response.data);
+      })
+      .processStatementCsv(rawText);
+  }
+
+function renderTransactionTable(transactions) {
+    const tbody = document.getElementById('tx-table-body');
+    tbody.innerHTML = '';
+    
+    if (transactions.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="6" style="padding: 16px; text-align: center;">No outbound debits found.</td></tr>';
+    } else {
+      transactions.forEach((tx, index) => {
+        let statusColor = "var(--starling-text-light)";
+        let statusBg = "transparent";
+        if (tx.status === "Declined" || tx.status === "Reversed") {
+           statusColor = "var(--starling-error-text)"; statusBg = "var(--starling-error-bg)";
+        } else if (tx.status === "Pending") {
+           statusColor = "var(--starling-warning-text)"; statusBg = "var(--starling-warning-bg)";
+        }
+        
+        const tr = document.createElement('tr');
+        tr.className = 'tx-row';
+        tr.style.borderBottom = '1px solid var(--starling-border)';
+        tr.innerHTML = `
+          <td style="padding: 12px; text-align: center;">
+            <input type="checkbox" onchange="toggleTxSelection(${index}, this.checked)" style="width: 16px; height: 16px; cursor: pointer;">
+          </td>
+          <td style="padding: 12px;">${formatPrettyDate(tx.dateTime).split(',')[0]}</td>
+          <td style="padding: 12px; font-weight: 600; color: var(--starling-navy);">${tx.counterparty}</td>
+          <td style="padding: 12px;">${tx.transactionType}</td>
+          <td style="padding: 12px;">£${tx.amount}</td>
+          <td style="padding: 12px;">
+            <span style="background: ${statusBg}; color: ${statusColor}; padding: 4px 8px; border-radius: 4px; font-size: 12px; font-weight: 600;">${tx.status}</span>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+    
+    document.getElementById('tx-selection-area').style.display = 'block';
+    updateSelectionFooter();
+  }
+
+// ==========================================
+  // HIGH-PERFORMANCE SEARCH & FILTER ENGINE
+  // ==========================================
+  let searchTimeout;
+  
+  // Ensure the Set exists
+  if (typeof selectedTxIndices === 'undefined') {
+    window.selectedTxIndices = new Set();
+  }
+
+  function debouncedSearch() {
+    clearTimeout(searchTimeout);
+    searchTimeout = setTimeout(filterTransactions, 250);
+  }
+
+  function filterTransactions() {
+    const query = document.getElementById('tx-search').value.toLowerCase().trim();
+    const settledOnly = document.getElementById('settled-toggle').checked;
+    const tbody = document.getElementById('tx-table-body');
+    
+    let html = '';
+    let renderedCount = 0;
+    const RENDER_LIMIT = 150; 
+
+    for (let i = 0; i < appState.statementData.length; i++) {
+      const tx = appState.statementData[i];
+      
+      if (settledOnly && tx.status.toLowerCase() !== 'settled') continue;
+      
+      if (query) {
+        const searchString = `${tx.counterparty} ${tx.amount} ${formatPrettyDate(tx.dateTime)}`.toLowerCase();
+        if (!searchString.includes(query)) continue;
+      }
+
+      const isChecked = selectedTxIndices.has(i) ? 'checked' : '';
+      
+      // Sandbox-safe fix: Using data-index and passing event instead of 'this'
+      html += `
+        <tr style="background: ${isChecked ? 'var(--starling-primary-light)' : '#fff'}; transition: background 0.2s;">
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border); text-align: center;">
+            <input type="checkbox" data-index="${i}" onchange="handleCheckboxChange(event)" ${isChecked} style="width: 16px; height: 16px; cursor: pointer;">
+          </td>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border); color: var(--starling-text-light);">${formatPrettyDate(tx.dateTime).split(',')[0]}</td>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border); font-weight: 600; color: var(--starling-navy);">${tx.counterparty}</td>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border); color: var(--starling-text-light);">${tx.transactionType}</td>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border);">£${tx.amount}</td>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border); color: var(--starling-text-light);">${tx.status}</td>
+        </tr>`;
+        
+      renderedCount++;
+      if (renderedCount >= RENDER_LIMIT) {
+        html += `<tr><td colspan="6" style="text-align: center; padding: 12px; color: var(--starling-text-light); font-style: italic;">Showing top ${RENDER_LIMIT} results. Keep typing to narrow down.</td></tr>`;
+        break; 
+      }
+    }
+    
+    tbody.innerHTML = html;
+  }
+
+// ==========================================
+  // INITIAL RENDER SELECTION CATCHER
+  // ==========================================
+  function toggleSelection(index, checkbox) {
+    if (checkbox.checked) {
+      selectedTxIndices.add(index);
+    } else {
+      selectedTxIndices.delete(index);
+    }
+    
+    const count = selectedTxIndices.size;
+    const countEl = document.getElementById('selection-count');
+    if (countEl) countEl.innerText = `${count} payment(s) selected`;
+    
+    const proceedBtn = document.getElementById('btn-proceed');
+    if (proceedBtn) proceedBtn.disabled = (count === 0);
+    
+    const row = checkbox.closest('tr');
+    if (row) {
+      row.style.background = checkbox.checked ? 'var(--starling-primary-light)' : '#fff';
+    }
+  }
+
+  function handleCheckboxChange(event) {
+    const checkbox = event.target;
+    // Extract the index we safely hid in the HTML data-index attribute
+    const index = parseInt(checkbox.getAttribute('data-index'), 10);
+    
+    if (checkbox.checked) {
+      selectedTxIndices.add(index);
+    } else {
+      selectedTxIndices.delete(index);
+    }
+    
+    const count = selectedTxIndices.size;
+    const countEl = document.getElementById('selection-count');
+    countEl.innerText = `${count} payment(s) selected`;
+    document.getElementById('btn-proceed').disabled = (count === 0);
+    
+    const row = checkbox.closest('tr');
+    if (row) {
+      row.style.background = checkbox.checked ? 'var(--starling-primary-light)' : '#fff';
+    }
+  }
+
+  // ==========================================
+  // SELECTION MODAL MANAGEMENT
+  // ==========================================
+  function openSelectedModal() {
+    if (selectedTxIndices.size === 0) return; // Do nothing if empty
+    
+    document.getElementById('selected-modal').style.display = 'flex';
+    renderSelectedModal();
+  }
+
+  function closeSelectedModal() {
+    document.getElementById('selected-modal').style.display = 'none';
+  }
+
+  function renderSelectedModal() {
+    const tbody = document.getElementById('selected-modal-body');
+    tbody.innerHTML = '';
+    
+    selectedTxIndices.forEach(index => {
+      const tx = appState.statementData[index];
+      tbody.innerHTML += `
+        <tr>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border); color: var(--starling-text-light);">${formatPrettyDate(tx.dateTime)}</td>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border); font-weight: 600; color: var(--starling-navy);">${tx.counterparty}</td>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border);">£${tx.amount}</td>
+          <td style="padding: 12px; border-bottom: 1px solid var(--starling-border);">
+            <button onclick="removeSelectionFromModal(${index})" style="background: none; border: 1px solid var(--starling-error-text); color: var(--starling-error-text); padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 600;">Remove</button>
+          </td>
+        </tr>`;
+    });
+  }
+
+  function removeSelectionFromModal(index) {
+    // Remove from the underlying Set
+    selectedTxIndices.delete(index);
+    
+    // Update the UI text
+    const count = selectedTxIndices.size;
+    const countEl = document.getElementById('selection-count');
+    countEl.innerText = `${count} payment(s) selected`;
+    document.getElementById('btn-proceed').disabled = (count === 0);
+    
+    // Re-render the background table and the modal
+    filterTransactions(); 
+    
+    if (count === 0) {
+      closeSelectedModal();
+    } else {
+      renderSelectedModal();
+    }
+  }
+
+  // Small CSS tweak on the hover state for the clickable text
+  document.getElementById('selection-count').addEventListener('mouseover', function() {
+    if(selectedTxIndices.size > 0) this.style.background = 'var(--starling-primary-light)';
+  });
+  document.getElementById('selection-count').addEventListener('mouseout', function() {
+    this.style.background = 'transparent';
+  });
+
+  function toggleTxSelection(index, isChecked) {
+    if (isChecked) selectedTxIndices.add(index);
+    else selectedTxIndices.delete(index);
+    updateSelectionFooter();
+  }
+
+  function updateSelectionFooter() {
+    const count = selectedTxIndices.size;
+    
+    // Look for either the old or new ID, and only update if it exists
+    const summaryEl = document.getElementById('selection-summary') || document.getElementById('selection-count');
+    if (summaryEl) {
+        summaryEl.innerText = `${count} payment(s) selected`;
+    }
+    
+    // Do the same for the proceed button
+    const btnEl = document.getElementById('btn-process-selection') || document.getElementById('btn-proceed');
+    if (btnEl) {
+        btnEl.disabled = count === 0;
+    }
+    
+    // Check if any selected items are Declined/Reversed to show warning
+    let hasInvalidStatus = false;
+    selectedTxIndices.forEach(idx => {
+       const tx = appState.statementData[idx];
+       if (tx.status === "Declined" || tx.status === "Reversed") hasInvalidStatus = true;
+    });
+    
+    const warningEl = document.getElementById('status-warning');
+    if (warningEl) {
+        warningEl.style.display = hasInvalidStatus ? 'block' : 'none';
+    }
+}
+
+// --- Auto-Macro Detection Engine ---
+  function findAutoMacroIndex(tx, historyCount) {
+    const cp = (tx.counterparty || "").toLowerCase();
+    const ref = (tx.reference || "").toLowerCase();
+    const type = (tx.transactionType || "").toLowerCase();
+    const searchString = cp + " " + ref; // Combine to search both fields
+
+    // Helper to safely find index by exact macro name (must match your Data_Macros file)
+    const getMacro = (name) => MACRO_DATABASE.findIndex(m => m.merchant === name);
+
+    // 1. Amazon Specific Logic
+    if (searchString.includes("amazon") || searchString.includes("amzn")) {
+      if (searchString.includes("prime") || type.includes("subscription") || type.includes("recurring") || type.includes("continuous")) {
+        return getMacro("Amazon Prime");
+      } else if (historyCount > 0) {
+        return getMacro("Amazon (General)");
+      }
+      return -1; 
+    }
+
+    // 2. Google Ecosystem (Play, YouTube, Holds)
+    if (searchString.includes("google") || searchString.includes("youtube")) {
+      if (searchString.includes("youtube")) return getMacro("YouTube Premium");
+      if (searchString.includes("hold") || searchString.includes("temporary") || searchString.includes("temp")) return getMacro("Google Temporary Hold");
+      return getMacro("Google Play");
+    }
+
+    // 3. Apple Ecosystem
+    if (searchString.includes("apple.com/bill") || searchString.includes("itunes") || searchString.includes("apple.com")) {
+      return getMacro("iTunes/App Store");
+    }
+
+    // 4. Microsoft / Gaming
+    if (searchString.includes("xbox") || searchString.includes("microsoft") || searchString.includes("msft")) {
+      return getMacro("Microsoft Xbox");
+    }
+    if (searchString.includes("playstation") || searchString.includes("psn") || searchString.includes("sony ent")) {
+      return getMacro("PlayStation");
+    }
+
+    // 5. Webloyalty & Cashback Subscriptions
+    if (searchString.includes("completesave") || searchString.includes("wly*comp")) return getMacro("Completesave/Savings");
+    if (searchString.includes("mytimerewards") || searchString.includes("wly*mytime")) return getMacro("My Time Reward");
+    if (searchString.includes("nxrewards") || searchString.includes("nx rewards") || searchString.includes("wly*nx")) return getMacro("National Express Rewards");
+
+    // 6. Comprehensive Dictionary Matcher for the remaining list
+    const mappings = {
+      "bolt": "Bolt",
+      "curve": "Curve",
+      "crv*": "Curve",
+      "dazn": "DAZN",
+      "deliveroo": "Deliveroo",
+      "edreams": "eDreams Prime/Opodo",
+      "opodo": "eDreams Prime/Opodo",
+      "experian": "Experian",
+      "fabletics": "Fabletics",
+      "techstyle": "Fabletics", // Fabletics parent company
+      "gocardless": "GoCardless",
+      "hatchster": "Hatchster Limited (Lotto Social)",
+      "lotto social": "Hatchster Limited (Lotto Social)",
+      "hellofresh": "HelloFresh",
+      "hello fresh": "HelloFresh",
+      "justanswer": "JustAnswer",
+      "just eat": "Just Eat",
+      "justeat": "Just Eat",
+      "klarna": "Klarna",
+      "now tv": "Now TV",
+      "nowtv": "Now TV",
+      "nyx": "NYX",
+      "dnata": "Offline Airline payment including Dnata & Newrest Catering",
+      "newrest": "Offline Airline payment including Dnata & Newrest Catering",
+      "onlyfans": "Only Fans (OF)",
+      "only fans": "Only Fans (OF)",
+      "fenix": "Only Fans (OF)", // OnlyFans parent company
+      "on top up": "On Top Up",
+      "ontopup": "On Top Up",
+      "surestream": "On Top Up", // On Top Up parent company
+      "packlink": "Packlink",
+      "paramount": "Paramount Plus",
+      "paypal": "Paypal", // Match spelling exactly as it appears in Data_Macros
+      "playerlands": "PlayerLands",
+      "spotify": "Spotify",
+      "stagecoach": "Stagecoach",
+      "tfl": "Public Transport/TfL",
+      "transport for london": "Public Transport/TfL",
+      "vehicleenquiry": "Vehicle Information",
+      "air-serv": "NYA*Air-Serv",
+      "air serv": "NYA*Air-Serv"
+    };
+
+    // Scan the dictionary to see if any of these keywords appear in the transaction string
+    for (const [keyword, macroName] of Object.entries(mappings)) {
+      if (searchString.includes(keyword)) {
+        return getMacro(macroName);
+      }
+    }
+
+    // No match found
+    return -1;
+  }
+
+  // --- Proceed & Routing Logic ---
+  function submitSelectedTxs() {
+    const selectedTxs = Array.from(selectedTxIndices).map(i => appState.statementData[i]);
+    selectedTxs.sort((a,b) => b.rawTimeMs - a.rawTimeMs);
+    const primaryTx = selectedTxs[0]; 
+    
+    appState.selectedTransactions = selectedTxs;
+    appState.parsedData = { ...primaryTx }; 
+    
+    if (selectedTxs.length > 1) {
+       const totalAmount = selectedTxs.reduce((sum, tx) => sum + parseFloat(tx.amount), 0).toFixed(2);
+       appState.parsedData.amount = totalAmount;
+       appState.parsedData.reference = "Multiple References";
+    }
+
+    // Smart History Check
+    const selectedIds = new Set(selectedTxs.map(t => t.id));
+    const previousPayments = appState.statementData.filter(tx => 
+      tx.counterparty.toLowerCase() === primaryTx.counterparty.toLowerCase() && 
+      !selectedIds.has(tx.id) &&
+      tx.rawTimeMs <= primaryTx.rawTimeMs
+    );
+    
+    previousPayments.sort((a,b) => b.rawTimeMs - a.rawTimeMs);
+    appState.merchantHistory = previousPayments;
+    
+    // Count by Status
+    let settled = 0, declined = 0, reversed = 0, pending = 0;
+    let lastSettledDate = "";
+    
+    previousPayments.forEach(tx => {
+       if (tx.status === "Settled") {
+          settled++;
+          if (!lastSettledDate) lastSettledDate = formatPrettyDate(tx.dateTime).split(',')[0];
+       }
+       else if (tx.status === "Declined") declined++;
+       else if (tx.status === "Reversed") reversed++;
+       else if (tx.status === "Pending") pending++;
+    });
+
+    appState.flags.merchantHistoryCount = settled; 
+    
+    // Build the dynamic History string
+    if (previousPayments.length > 0) {
+      let hStr = "";
+      if (settled > 0) hStr = `Customer has ${settled} previous settled payment(s) (Last: ${lastSettledDate}).`;
+      else hStr = `No previous settled payments found.`;
+      
+      let extras = [];
+      if (pending > 0) extras.push(`${pending} pending`);
+      if (declined > 0) extras.push(`${declined} declined`);
+      if (reversed > 0) extras.push(`${reversed} reversed`);
+      
+      if (extras.length > 0) hStr += ` They also have ${extras.join(', ')}.`;
+      hStr += " Ask about this!";
+      
+      appState.flags.historyString = hStr;
+    } else {
+      appState.flags.historyString = "";
+    }
+
+// Primary Routing
+    if (primaryTx.paymentGroup === "CARD") {
+      const typeUpper = (primaryTx.transactionType || "").toUpperCase();
+      
+      const isWallet = typeUpper.includes("APPLE") || typeUpper.includes("GOOGLE") || typeUpper.includes("ANDROID") || typeUpper.includes("WALLET");
+      const isContactless = typeUpper.includes("CONTACTLESS");
+      const isChipPin = typeUpper.includes("CHIP") || typeUpper.includes("PIN");
+      const isMagstripe = typeUpper.includes("MAGSTRIPE");
+      const isMke = typeUpper.includes("MANUAL") || typeUpper.includes("KEY") || typeUpper.includes("MKE");
+      
+      if (isWallet) navigateToView('view-wallet-check');
+      else if (isContactless) navigateToView('view-contactless-check');
+      else if (isChipPin) { appState.flags.cpType = 'chip_pin'; navigateToView('view-other-cp-check'); }
+      else if (isMagstripe) { appState.flags.cpType = 'magstripe'; navigateToView('view-other-cp-check'); }
+      else if (isMke) { appState.flags.cpType = 'mke'; navigateToView('view-other-cp-check'); }
+      else navigateToView('view-step1'); // Fallback to Online
+      
+    } else {
+      navigateToView('view-holding');
+    }
+    
+    // --- AUTO-TRIGGER MACRO MODAL ---
+    const autoMacroIdx = findAutoMacroIndex(primaryTx, settled);
+    if (autoMacroIdx !== -1) {
+      // Small timeout allows the view to change in the background before popping the modal
+      setTimeout(() => {
+        openMacroModal();
+        selectMacro(autoMacroIdx);
+      }, 400); 
+    }
+  }
+// --- View Auth/PoS Check ---
+  function view_pos_check_init() {
+    const type = appState.parsedData.transactionType || "Unknown";
+    document.getElementById('pos-check-type').innerText = type;
+    document.getElementById('pos-check-type-inline').innerText = type;
+    
+    // Only show the "Lost/Stolen" physical card check if it's actually a physical card payment
+    const typeUpper = type.toUpperCase();
+    const isPoS = typeUpper.includes("CHIP") || typeUpper.includes("CONTACTLESS") || typeUpper.includes("ATM") || typeUpper.includes("MAGSTRIPE") || typeUpper.includes("POS");
+    
+    const physicalCheck = document.getElementById('physical-card-check');
+    if (physicalCheck) {
+      physicalCheck.style.display = isPoS ? 'block' : 'none';
+    }
+  }
+ // --- View Step 1: Memory & History ---
+  function view_step1_init() {
+    const data = appState.parsedData;
+    
+    document.getElementById('step1-amount').innerText = `${data.currency} ${data.amount}`;
+    
+    let merchLabel = data.counterparty;
+    if (appState.selectedTransactions.length > 1) merchLabel += ` (${appState.selectedTransactions.length} payments)`;
+    document.getElementById('step1-merchant').innerText = merchLabel;
+    
+    document.getElementById('step1-reference').innerText = data.reference;
+
+    // Handle Smart History Badge OR No History Prompt
+    const historyBadge = document.getElementById('smart-history-badge');
+    const historyText = document.getElementById('smart-history-text');
+    const noHistoryPrompt = document.getElementById('no-history-prompt');
+    
+    if (appState.flags.historyString) {
+      historyText.innerText = appState.flags.historyString;
+      historyBadge.style.display = 'flex';
+      if (noHistoryPrompt) noHistoryPrompt.style.display = 'none';
+    } else {
+      historyBadge.style.display = 'none';
+      if (noHistoryPrompt) noHistoryPrompt.style.display = 'block';
+    }
+
+    // --- DYNAMIC QUESTION LOGIC ---
+    // Get the most recent payment amount (selectedTransactions is already sorted newest-first)
+    let recentAmount = data.amount;
+    if (appState.selectedTransactions && appState.selectedTransactions.length > 0) {
+       recentAmount = appState.selectedTransactions[0].amount;
+    }
+    const formattedAmount = `£${recentAmount}`;
+
+    const typeUpper = (data.transactionType || "").toUpperCase();
+    let dynamicQ = "";
+    
+    if (typeUpper.includes("SUBSCRIPTION")) {
+      dynamicQ = `"Are you expecting any subscriptions for ${formattedAmount}? Sometimes the trading name looks completely different from the website."`;
+    } else if (typeUpper.includes("ATM")) {
+      dynamicQ = `"Do you remember withdrawing ${formattedAmount} in cash? Sometimes the cash machine operator's name appears instead of the bank's."`;
+    } else if (typeUpper.includes("CONTACTLESS") || typeUpper.includes("CHIP")) {
+      dynamicQ = `"Do you remember visiting a shop, restaurant, or pub for ${formattedAmount}? Their official trading name can be different from the sign on the shop."`;
+    } else {
+      dynamicQ = `"Have you made any online purchases recently for ${formattedAmount}?"`;
+    }
+
+    document.getElementById('dynamic-question-1').innerText = dynamicQ;
+  }
+
+  function openHistoryModal() {
+    const tbody = document.getElementById('history-table-body');
+    tbody.innerHTML = '';
+    
+    appState.merchantHistory.forEach(tx => {
+      const tr = document.createElement('tr');
+      tr.style.borderBottom = '1px solid var(--starling-border)';
+      tr.innerHTML = `
+        <td style="padding: 10px 16px;">${formatPrettyDate(tx.dateTime).split(',')[0]}</td>
+        <td style="padding: 10px 16px; font-weight: 600;">£${tx.amount}</td>
+        <td style="padding: 10px 16px;">${tx.transactionType}</td>
+        <td style="padding: 10px 16px; color: var(--starling-text-light);">${tx.status}</td>
+      `;
+      tbody.appendChild(tr);
+    });
+    
+    document.getElementById('history-modal').style.display = 'flex';
+  }
+
+  function closeHistoryModal() {
+    document.getElementById('history-modal').style.display = 'none';
+  }
+
+// --- MCC Search Database & Logic ---
+  const MCC_DATABASE = {
+    // Transport & Travel
+    "3000": "Airlines (General)",
+    "4111": "Transportation: Local Commuter (Trains/Ferries)",
+    "4112": "Passenger Railways",
+    "4121": "Taxicabs and Limousines (Uber/Lyft)",
+    "4131": "Bus Lines",
+    "4411": "Cruise Lines",
+    "4511": "Airlines/Air Carriers",
+    "4722": "Travel Agencies and Tour Operators",
+    "4784": "Tolls and Bridge Fees",
+    "4789": "Transportation Services Not Elsewhere Classified",
+    "7011": "Lodging: Hotels, Motels, Resorts",
+    "7512": "Automobile Rental Agency",
+    "7523": "Automobile Parking Lots and Garages",
+    
+    // Utilities & Bills
+    "4814": "Telecommunication Services (Calls/Data)",
+    "4816": "Computer Network/Information Services",
+    "4899": "Cable, Satellite, and Other Pay Television/Radio",
+    "4900": "Utilities: Electric, Gas, Heating Oil, Sanitary, Water",
+    
+    // Food & Grocery
+    "5411": "Grocery Stores/Supermarkets",
+    "5422": "Freezer and Locker Meat Provisioners",
+    "5462": "Bakeries",
+    "5499": "Misc Food Stores (Convenience Stores, Vending)",
+    "5812": "Eating Places/Restaurants",
+    "5814": "Fast Food Restaurants",
+    
+    // Retail & Shopping
+    "5200": "Home Supply Warehouse Stores",
+    "5310": "Discount Stores",
+    "5311": "Department Stores",
+    "5541": "Service Stations (Fuel/Petrol)",
+    "5542": "Automated Fuel Dispensers",
+    "5552": "Electric Vehicle Charging",
+    "5651": "Family Clothing Stores",
+    "5691": "Men's and Women's Clothing Stores",
+    "5732": "Electronics Stores",
+    "5912": "Drug Stores and Pharmacies",
+    "5921": "Package Stores (Beer, Wine, Liquor)",
+    "5941": "Sporting Goods Stores",
+    "5942": "Book Stores",
+    "5999": "Miscellaneous and Specialty Retail Stores",
+    
+    // High Risk / Digital Goods / Subscriptions
+    "4829": "Money Transfer (Wire Transfers)",
+    "5815": "Digital Goods: Audiovisual Media (Books/Movies/Music)",
+    "5816": "Digital Goods: Games",
+    "5817": "Digital Goods: Applications (Excludes Games)",
+    "5818": "Digital Goods: Large Digital Goods Merchant",
+    "5966": "Direct Marketing: Outbound Telemarketing",
+    "5967": "Direct Marketing: Inbound Telemarketing",
+    "5968": "Direct Marketing: Continuity/Subscription Merchant",
+    "5969": "Direct Marketing: Other Direct Marketers",
+    
+    // Financial & Cash
+    "6010": "Financial Institutions: Manual Cash Disbursements",
+    "6011": "Financial Institutions: Automated Cash Dispense (ATM)",
+    "6012": "Financial Institutions: Merchandise and Services",
+    "6051": "Non-FI: Cryptocurrency, Money Orders, Account Funding",
+    "6211": "Securities Brokers/Dealers (Forex/Trading)",
+    "6540": "Non-Financial Institutions: Stored Value Card Purchase/Load",
+    
+    // Services & Entertainment
+    "7230": "Beauty and Barber Shops",
+    "7273": "Dating and Escort Services",
+    "7299": "Miscellaneous Personal Services",
+    "7311": "Advertising Services",
+    "7399": "Business Services",
+    "7801": "Government-Licensed On-Line Casinos (On-Line Gambling)",
+    "7802": "Government-Licensed Horse/Dog Racing",
+    "7994": "Video Game Arcades/Establishments",
+    "7995": "Betting (Sports, Casino, Lottery)",
+    "7997": "Membership Clubs (Sports, Recreation, Athletic)",
+    "7999": "Recreation Services Not Elsewhere Classified",
+    "8999": "Professional Services Not Elsewhere Classified"
+  };
+
+  function openMccModal() {
+    document.getElementById('mcc-modal').style.display = 'flex';
+    document.getElementById('mcc-search').value = '';
+    searchMcc(); // Resets view to common
+  }
+
+  function closeMccModal() {
+    document.getElementById('mcc-modal').style.display = 'none';
+  }
+
+  function searchMcc() {
+    const query = document.getElementById('mcc-search').value.toLowerCase().trim();
+    const commonView = document.getElementById('mcc-common-view');
+    const searchView = document.getElementById('mcc-search-results');
+    const resultsList = document.getElementById('mcc-results-list');
+    const noResults = document.getElementById('mcc-no-results');
+    
+    if (query.length === 0) {
+      commonView.style.display = 'block';
+      searchView.style.display = 'none';
+      return;
+    }
+    
+    commonView.style.display = 'none';
+    searchView.style.display = 'block';
+    resultsList.innerHTML = '';
+    noResults.style.display = 'none';
+    
+    let matches = 0;
+    for (const [code, description] of Object.entries(MCC_DATABASE)) {
+      if (code.includes(query) || description.toLowerCase().includes(query)) {
+        matches++;
+        const li = document.createElement('li');
+        li.style.padding = '12px';
+        li.style.marginBottom = '8px';
+        li.style.background = '#fafbfc';
+        li.style.border = '1px solid var(--starling-border)';
+        li.style.borderRadius = '8px';
+        li.innerHTML = `<strong style="color: var(--starling-navy);">${code}</strong>: ${description}`;
+        resultsList.appendChild(li);
+      }
+    }
+    
+    if (matches === 0) {
+      noResults.style.display = 'block';
+    }
+  }
+
+  function executeGoogleSearch() {
+    const merchantName = appState.parsedData.counterparty || "";
+    const ref = appState.parsedData.reference || "";
+    const query = encodeURIComponent(`${merchantName} ${ref} merchant UK`);
+    window.open(`https://www.google.com/search?q=${query}`, '_blank');
+  }
+
+// --- View Step 2: Investigation & Authorisation ---
+ function view_step2_init() {
+    const data = appState.parsedData || {};
+    const type = (data.transactionType || "").toUpperCase();
+    
+    const isPoS = type.includes("CHIP") || type.includes("CONTACTLESS") || type.includes("ATM") || type.includes("MAGSTRIPE") || type.includes("POS");
+    const isWallet = type.includes("APPLE") || type.includes("GOOGLE") || type.includes("ANDROID") || type.includes("WALLET");
+    const isWalletOnline = type.includes("APPLE_PAY_ONLINE") || type.includes("ANDROID_PAY_ONLINE") || type.includes("GOOGLE_PAY_ONLINE");
+    const isOnline = data.paymentGroup === "CARD" && !isPoS && !isWallet;
+
+    const onlineSection = document.getElementById('online-routing-section');
+    const walletSection = document.getElementById('wallet-routing-section');
+    
+    if (onlineSection) onlineSection.style.display = 'none';
+    if (walletSection) walletSection.style.display = 'none';
+
+    if (isWallet) {
+       if (walletSection) walletSection.style.display = 'block';
+       
+       // --- NEW AUTOMATED WALLET ROUTING ---
+       const posFlow = document.getElementById('wallet-pos-flow');
+       const onlineFlow = document.getElementById('wallet-online-flow');
+       const manualToggles = document.getElementById('wallet-manual-toggles');
+       const autoSubtitle = document.getElementById('wallet-auto-subtitle');
+       
+       if (isWalletOnline) {
+           if (onlineFlow) onlineFlow.style.display = 'block';
+           if (posFlow) posFlow.style.display = 'none';
+           if (manualToggles) manualToggles.style.display = 'none';
+           if (autoSubtitle) autoSubtitle.innerText = "✓ System detected an Online Mobile Wallet payment. Please follow the script below.";
+       } else {
+           if (posFlow) posFlow.style.display = 'block';
+           if (onlineFlow) onlineFlow.style.display = 'none';
+           if (manualToggles) manualToggles.style.display = 'none';
+           if (autoSubtitle) autoSubtitle.innerText = "✓ System detected an In-Person Mobile Wallet payment. Please check device status below.";
+       }
+       
+    } else if (isOnline) {
+       if (onlineSection) onlineSection.style.display = 'block';
+       const authHistoryWarning = document.getElementById('auth-history-warning');
+       if (appState.flags.merchantHistoryCount && appState.flags.merchantHistoryCount > 0) {
+         if (authHistoryWarning) authHistoryWarning.style.display = 'block';
+       } else {
+         if (authHistoryWarning) authHistoryWarning.style.display = 'none';
+       }
+    }
+  }
+
+// --- View Step 3: Verification Check ---
+  function handleAcsPaste() {
+    const jsonStr = document.getElementById('acs-json-input').value;
+    const btn = document.getElementById('btn-process-acs');
+    const err = document.getElementById('acs-error');
+    
+    if(!jsonStr) { err.innerText = "Please paste the data first."; err.style.display = 'block'; return; }
+    
+    btn.innerText = "Processing...";
+    btn.disabled = true;
+    err.style.display = 'none';
+
+    google.script.run
+      .withSuccessHandler(function(res) {
+        btn.innerText = "Verify Details";
+        btn.disabled = false;
+        
+        if(!res.success) {
+          err.innerText = res.error;
+          err.style.display = 'block';
+          return;
+        }
+        
+        appState.acsData = res;
+        
+        document.getElementById('acs-name').innerText = res.name || "N/A";
+        document.getElementById('acs-email').innerText = res.email || "N/A";
+        document.getElementById('acs-phone').innerText = res.phone || "N/A";
+        document.getElementById('acs-address').innerText = res.billingAddress || "N/A";
+        
+        // Smart Device string formatting
+        let deviceStr = res.purchaseDevice || "N/A";
+        if (res.sdkHardware && res.sdkHardware !== "N/A") {
+          deviceStr = `${res.sdkHardware} (App: ${res.sdkOS})`;
+        } else if (deviceStr.length > 50) {
+          // Truncate long User-Agents so they don't break the UI box
+          deviceStr = deviceStr.substring(0, 50) + "...";
+        }
+        document.getElementById('acs-device').innerText = deviceStr;
+        document.getElementById('acs-ip').innerText = `${res.ip || 'N/A'} (${res.location || 'Unknown'})`;
+        
+        document.getElementById('friction-zone').style.display = 'block';
+      })
+      .processTransactionData(jsonStr);
+  }
+
+  // --- View Outcomes ---
+  const OUTCOME_CONFIG = {
+    'lost_stolen': {
+      icon: '🚫', title: 'Card Lost or Stolen', toolName: 'Card Fraud Wizard',
+      desc: 'The physical card is missing. Advise the customer to cancel the card immediately via the app, or cancel it for them, and proceed to raise a True Fraud claim.',
+      url: 'https://script.google.com/macros/s/YOUR_FRAUD_TOOL_ID/exec'
+    },
+    'fraud': {
+      icon: '🛑', title: 'True Fraud Identified', toolName: 'Card Fraud Wizard',
+      desc: 'The payment is unrecognised and details do not match, or authentication was bypassed.',
+      url: 'https://script.google.com/macros/s/YOUR_FRAUD_TOOL_ID/exec'
+    },
+    'retail': {
+      icon: '🛍️', title: 'Retail Dispute', toolName: 'Retail Dispute Tool',
+      desc: 'Customer recognises the payment or order details matched exactly. Advise contacting merchant first.',
+      url: 'https://script.google.com/macros/s/YOUR_RETAIL_TOOL_ID/exec'
+    },
+    'scam': {
+      icon: '🚨', title: 'APP / Card Scam', toolName: 'Card Scams Wizard',
+      desc: 'The customer was tricked or coerced into making the payment. Follow scam safeguarding procedures.',
+      url: 'https://script.google.com/macros/s/YOUR_SCAM_TOOL_ID/exec'
+    },
+    'civil': {
+      icon: '🏠', title: 'Civil Dispute', toolName: null,
+      desc: 'A household member made the payment. Explain we cannot raise a fraud claim. No tool handoff required.'
+    },
+    'pos_fraud': {
+      icon: '💳', title: 'PoS Fraud Review', toolName: 'Fraud Review Board',
+      desc: 'Physical card was used but payment is disputed. Needs manual review.',
+      url: 'https://script.google.com/macros/s/YOUR_REVIEW_TOOL_ID/exec'
+    },
+    'improve_logo': {
+      icon: '📝', title: 'In-App Update Required', toolName: null,
+      desc: 'Customer recognises the payment but the logo/name is wrong. Direct them to the app. No claim required.'
+    }
+  };
+
+ function view_outcomes_init() {
+    const outcomeKey = appState.flags.outcome;
+    const config = OUTCOME_CONFIG[outcomeKey] || OUTCOME_CONFIG['fraud'];
+    
+    const iconEl = document.getElementById('outcome-icon');
+    if (iconEl) iconEl.innerText = config.icon;
+    
+    const titleEl = document.getElementById('outcome-title');
+    if (titleEl) titleEl.innerText = config.title;
+    
+    const descEl = document.getElementById('outcome-desc');
+    if (descEl) descEl.innerText = config.desc;
+    
+    const launchBtn = document.getElementById('btn-launch-tool');
+    if (launchBtn) {
+      if (config.toolName && config.url) {
+        launchBtn.style.display = 'flex';
+        launchBtn.innerHTML = `🚀 Launch ${config.toolName}`;
+        launchBtn.dataset.url = config.url;
+      } else {
+        launchBtn.style.display = 'none';
+      }
+    }
+  }
+  function launchHandoffTool() {
+    const baseUrl = document.getElementById('btn-launch-tool').dataset.url;
+    const params = new URLSearchParams({
+      amount: appState.parsedData.amount || "",
+      merchant: appState.parsedData.counterparty || "",
+      type: appState.parsedData.transactionType || "",
+      outcome: appState.flags.outcome
+    }).toString();
+    
+    window.open(`${baseUrl}?${params}`, '_blank');
+  }
+
+  function copyEscalationText() {
+    const data = appState.parsedData;
+    const title = document.getElementById('outcome-title').innerText;
+    
+    // Converted to safe string concatenation to prevent Apps Script compiler crashes
+    const template = "**Escalation Request: " + title + "**\n" +
+      "Amount: " + data.currency + " " + data.amount + "\n" +
+      "Merchant: " + data.counterparty + "\n" +
+      "Transaction Type: " + data.transactionType + "\n" +
+      "Reference: " + data.reference + "\n\n" +
+      "Agent Notes:\n" +
+      "- Triaged via Decision Tree.\n" +
+      "- Customer confirmed they do not recognize the payment.\n" +
+      "- Please process as per " + title + " guidance.";
+
+    navigator.clipboard.writeText(template).then(() => {
+      const feedback = document.getElementById('copy-feedback');
+      feedback.style.display = 'block';
+      setTimeout(() => { feedback.style.display = 'none'; }, 3000);
+    });
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    navigateToView('view-paste');
+  });
+
+  // --- Manual Search Modal Logic ---
+  function openManualSearchModal() {
+    document.getElementById('manual-search-modal').style.display = 'flex';
+    document.getElementById('manual-search-input').value = '';
+    renderManualSearchResults('');
+  }
+
+  function closeManualSearchModal() {
+    document.getElementById('manual-search-modal').style.display = 'none';
+  }
+
+  function filterManualSearch() {
+    renderManualSearchResults(document.getElementById('manual-search-input').value.toLowerCase());
+  }
+
+  function renderManualSearchResults(query) {
+    const tbody = document.getElementById('manual-search-table-body');
+    tbody.innerHTML = '';
+    
+    if(!query || query.length < 2) {
+       tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 16px; color: var(--starling-text-light);">Type at least 2 characters to search...</td></tr>';
+       return;
+    }
+    
+    const results = appState.statementData.filter(tx => 
+        (tx.counterparty || '').toLowerCase().includes(query) || 
+        (tx.reference || '').toLowerCase().includes(query)
+    );
+    
+    if(results.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="text-align: center; padding: 16px; color: var(--starling-text-light);">No matches found in statement.</td></tr>';
+        return;
+    }
+    
+    results.forEach(tx => {
+        tbody.innerHTML += `<tr>
+            <td style="padding: 10px; border-bottom: 1px solid var(--starling-border);">${formatPrettyDate(tx.dateTime).split(',')[0]}</td>
+            <td style="padding: 10px; border-bottom: 1px solid var(--starling-border); font-weight: 600;">${tx.counterparty}</td>
+            <td style="padding: 10px; border-bottom: 1px solid var(--starling-border);">£${tx.amount}</td>
+            <td style="padding: 10px; border-bottom: 1px solid var(--starling-border); color: var(--starling-text-light);">${tx.status}</td>
+        </tr>`;
+    });
+  }
+
+  // ==========================================
+  // SCRIPTING & MACROS LOGIC
+  // ==========================================
+  function openMacroModal() {
+    document.getElementById('macro-modal').style.display = 'flex';
+    document.getElementById('macro-search').value = '';
+    document.getElementById('macro-content').style.display = 'none';
+    document.getElementById('macro-placeholder').style.display = 'block';
+    renderMacroList();
+  }
+
+  function closeMacroModal() {
+    document.getElementById('macro-modal').style.display = 'none';
+  }
+
+  function renderMacroList() {
+    const container = document.getElementById('macro-list-container');
+    const query = document.getElementById('macro-search').value.toLowerCase().trim();
+    container.innerHTML = '';
+
+    // Grouping
+    const generics = [];
+    const specifics = [];
+
+    MACRO_DATABASE.forEach((macro, index) => {
+      if (query && !macro.merchant.toLowerCase().includes(query)) return;
+      if (macro.isGeneric) generics.push({ ...macro, idx: index });
+      else specifics.push({ ...macro, idx: index });
+    });
+
+    if (generics.length > 0) {
+      container.innerHTML += `<div style="font-size: 11px; text-transform: uppercase; color: var(--starling-text-light); font-weight: 700; margin-bottom: 8px;">Generic Responses</div>`;
+      generics.forEach(g => {
+        container.innerHTML += `<button onclick="selectMacro(${g.idx})" style="width: 100%; text-align: left; padding: 10px; margin-bottom: 6px; background: #fff; border: 1px solid var(--starling-primary); border-radius: 6px; color: var(--starling-primary); font-weight: 600; cursor: pointer;">${g.merchant}</button>`;
+      });
+    }
+
+    if (specifics.length > 0) {
+      container.innerHTML += `<div style="font-size: 11px; text-transform: uppercase; color: var(--starling-text-light); font-weight: 700; margin: 16px 0 8px 0;">Specific Merchants</div>`;
+      specifics.forEach(s => {
+        container.innerHTML += `<button onclick="selectMacro(${s.idx})" style="width: 100%; text-align: left; padding: 10px; margin-bottom: 6px; background: #fff; border: 1px solid var(--starling-border); border-radius: 6px; color: var(--starling-text); cursor: pointer;">${s.merchant}</button>`;
+      });
+    }
+
+    if (generics.length === 0 && specifics.length === 0) {
+      container.innerHTML = `<div style="color: var(--starling-text-light); font-style: italic;">No macros found.</div>`;
+    }
+  }
+
+  function filterMacros() {
+    renderMacroList();
+  }
+
+  function selectMacro(index) {
+    const macro = MACRO_DATABASE[index];
+    document.getElementById('macro-placeholder').style.display = 'none';
+    document.getElementById('macro-content').style.display = 'flex';
+    
+    document.getElementById('macro-title').innerText = macro.merchant;
+    
+    const contactEl = document.getElementById('macro-contact');
+    if (macro.contact && macro.contact !== "N/A") {
+      contactEl.innerText = macro.contact;
+      // If it's a URL, make it clickable
+      if (macro.contact.startsWith("http")) contactEl.href = macro.contact;
+      else contactEl.removeAttribute('href');
+    } else {
+      contactEl.innerText = "No contact information available.";
+      contactEl.removeAttribute('href');
+    }
+
+    // Dynamically inject the reference if the placeholder exists in the script
+    let dynamicWording = macro.wording;
+    const currentRef = appState.parsedData.reference || "Unknown Reference";
+    dynamicWording = dynamicWording.replace("[INSERT REFERENCE HERE]", currentRef);
+
+    document.getElementById('macro-text-area').value = dynamicWording;
+  }
+
+  function copyActiveMacro() {
+    const text = document.getElementById('macro-text-area').value;
+    navigator.clipboard.writeText(text).then(() => {
+      const feedback = document.getElementById('macro-copy-feedback');
+      feedback.style.display = 'block';
+      setTimeout(() => { feedback.style.display = 'none'; }, 3000);
+    });
+  }
+
+  // ==========================================
+  // CONTACTLESS AUTOMATION LOGIC
+  // ==========================================
+  function view_contactless_check_init() {
+    // Reset displays
+    document.getElementById('cl-card-given-q').style.display = 'none';
+    document.getElementById('cl-coerced-q').style.display = 'none';
+    document.getElementById('cl-subsequent-check').style.display = 'none';
+    document.getElementById('cl-not-fraud-pushback').style.display = 'none';
+
+    // Automation: Scan for subsequent Card Present transactions
+    const primaryTx = appState.parsedData;
+    const allTxs = appState.statementData;
+
+    const isCP = (type) => {
+      const t = (type || "").toUpperCase();
+      return t.includes("CHIP") || t.includes("CONTACTLESS") || t.includes("ATM") || t.includes("POS") || t.includes("MAGSTRIPE");
+    };
+
+    // Filter for CP txs that occurred strictly AFTER the primaryTx
+    const subsequent = allTxs.filter(tx => 
+      tx.rawTimeMs > primaryTx.rawTimeMs && 
+      tx.id !== primaryTx.id && 
+      isCP(tx.transactionType)
+    ).sort((a,b) => a.rawTimeMs - b.rawTimeMs);
+
+    appState.flags.subsequentCP = subsequent;
+  }
+
+  function handleContactlessLost(isLost) {
+    document.getElementById('cl-not-fraud-pushback').style.display = 'none';
+    
+    if (!isLost) {
+      document.getElementById('cl-card-given-q').style.display = 'block';
+      document.getElementById('cl-subsequent-check').style.display = 'none';
+    } else {
+      document.getElementById('cl-card-given-q').style.display = 'none';
+      document.getElementById('cl-coerced-q').style.display = 'none';
+      
+      const subs = appState.flags.subsequentCP || [];
+      document.getElementById('cl-subsequent-check').style.display = 'block';
+
+      if (subs.length === 0) {
+        document.getElementById('cl-no-subs').style.display = 'block';
+        document.getElementById('cl-has-subs').style.display = 'none';
+      } else {
+        document.getElementById('cl-no-subs').style.display = 'none';
+        document.getElementById('cl-has-subs').style.display = 'block';
+        
+        const tbody = document.getElementById('cl-subs-tbody');
+        tbody.innerHTML = '';
+        // Show up to 3 subsequent transactions to keep the UI clean
+        subs.slice(0, 3).forEach(tx => { 
+           tbody.innerHTML += `<tr>
+              <td style="padding: 8px; border-bottom: 1px solid var(--starling-border);">${formatPrettyDate(tx.dateTime).split(',')[0]}</td>
+              <td style="padding: 8px; border-bottom: 1px solid var(--starling-border); font-weight: 600;">${tx.counterparty}</td>
+              <td style="padding: 8px; border-bottom: 1px solid var(--starling-border);">£${tx.amount}</td>
+              <td style="padding: 8px; border-bottom: 1px solid var(--starling-border); font-size: 12px;">${tx.transactionType}</td>
+           </tr>`;
+        });
+      }
+    }
+  }
+
+function showContactlessPushback(reason) {
+    const pushbackDiv = document.getElementById('cl-not-fraud-pushback');
+    const textEl = document.getElementById('cl-pushback-text');
+    
+    let script = "";
+    if (reason === 'not_lost') {
+      script = `"As you have your physical card, and this payment was made by tapping it, it is highly unlikely to be fraudulent. However, I want to help you figure out what this is. Let's look at the merchant details together."`;
+    } else if (reason === 'willingly_shared') {
+      script = `"Because you willingly handed your physical card to someone else, we cannot raise a fraud claim for this. However, let's look at the details of the payment so you have the information you need to resolve this with them."`;
+    } else if (reason === 'subsequent_recognised') {
+      script = `"I can see that genuine card-present payments were made after the time you stated the card was lost. Because of this, it's highly unlikely this was fraud. Let's work together to try and identify the retailer instead."`;
+    }
+
+    textEl.innerText = script;
+    pushbackDiv.style.display = 'block';
+
+    // Populate history badge seamlessly inside the pushback screen
+    const historyBadge = document.getElementById('cl-history-badge');
+    const historyText = document.getElementById('cl-history-text');
+    if (appState.flags.historyString) {
+      historyText.innerText = appState.flags.historyString;
+      historyBadge.style.display = 'flex';
+    } else {
+      historyBadge.style.display = 'none';
+    }
+  }
+
+  // ==========================================
+  // OTHER CARD PRESENT LOGIC (Chip&PIN, MagStripe, MKE)
+  // ==========================================
+  function view_other_cp_check_init() {
+    const type = appState.flags.cpType;
+    
+    // Hide all flows initially
+    document.getElementById('flow-chip-pin').style.display = 'none';
+    document.getElementById('flow-magstripe').style.display = 'none';
+    document.getElementById('flow-mke').style.display = 'none';
+    
+    // Hide shared components
+    document.getElementById('cp-shared-given-card').style.display = 'none';
+    document.getElementById('cp-shared-coerced').style.display = 'none';
+    document.getElementById('cp-shared-subs-check').style.display = 'none';
+    document.getElementById('cp-pivot-end').style.display = 'none';
+
+    if (type === 'chip_pin') {
+      document.getElementById('cp-dynamic-title').innerText = "Chip & PIN Diagnostics";
+      document.getElementById('flow-chip-pin').style.display = 'block';
+    } 
+    else if (type === 'magstripe') {
+      document.getElementById('cp-dynamic-title').innerText = "MagStripe Diagnostics";
+      document.getElementById('flow-magstripe').style.display = 'block';
+      
+      // Auto-lookup MCC
+      const mcc = appState.parsedData.mcc || "";
+      let mccString = "Unknown Category";
+      if (mcc && MCC_DATABASE[mcc]) mccString = MCC_DATABASE[mcc] + ` (MCC: ${mcc})`;
+      document.getElementById('magstripe-mcc-output').innerText = mccString;
+    } 
+    else if (type === 'mke') {
+      document.getElementById('cp-dynamic-title').innerText = "Manual Key Entry (MKE) Diagnostics";
+      document.getElementById('flow-mke').style.display = 'block';
+      
+      // Auto History Display
+      if (appState.flags.merchantHistoryCount && appState.flags.merchantHistoryCount > 0) {
+        document.getElementById('mke-auto-history-result').innerText = appState.flags.historyString;
+        document.getElementById('mke-auto-history-result').style.color = "var(--starling-warning-text)";
+      } else {
+        document.getElementById('mke-auto-history-result').innerText = "No settled payments found in the provided 18-month CSV.";
+        document.getElementById('mke-auto-history-result').style.color = "var(--starling-text)";
+      }
+    }
+  }
+
+  function cpHandleLost(flowType, isLost) {
+    if (!isLost) {
+      document.getElementById('cp-shared-given-card').style.display = 'block';
+      if(flowType === 'chip_pin') document.getElementById('cp-pin-pushback').style.display = 'none';
+      if(flowType === 'magstripe') document.getElementById('magstripe-controls-check').style.display = 'none';
+    } else {
+      document.getElementById('cp-shared-given-card').style.display = 'none';
+      document.getElementById('cp-shared-coerced').style.display = 'none';
+      
+      if(flowType === 'chip_pin') document.getElementById('cp-pin-pushback').style.display = 'block';
+      if(flowType === 'magstripe') document.getElementById('magstripe-controls-check').style.display = 'block';
+    }
+  }
+
+  function cpTriggerSubsCheck() {
+    document.getElementById('cp-shared-subs-check').style.display = 'block';
+    document.getElementById('cp-pivot-end').style.display = 'none';
+    
+    // Execute Automated Check (Reusing Contactless logic)
+    const primaryTx = appState.parsedData;
+    const allTxs = appState.statementData;
+    const isCP = (t) => {
+      const u = (t || "").toUpperCase();
+      return u.includes("CHIP") || u.includes("CONTACTLESS") || u.includes("ATM") || u.includes("POS") || u.includes("MAGSTRIPE");
+    };
+
+    const subs = allTxs.filter(tx => tx.rawTimeMs > primaryTx.rawTimeMs && tx.id !== primaryTx.id && isCP(tx.transactionType)).sort((a,b) => a.rawTimeMs - b.rawTimeMs);
+
+    if (subs.length === 0) {
+      document.getElementById('cp-shared-no-subs').style.display = 'block';
+      document.getElementById('cp-shared-has-subs').style.display = 'none';
+    } else {
+      document.getElementById('cp-shared-no-subs').style.display = 'none';
+      document.getElementById('cp-shared-has-subs').style.display = 'block';
+      const tbody = document.getElementById('cp-shared-subs-tbody');
+      tbody.innerHTML = '';
+      subs.slice(0, 3).forEach(tx => {
+         tbody.innerHTML += `<tr>
+            <td style="padding: 8px; border-bottom: 1px solid var(--starling-border);">${formatPrettyDate(tx.dateTime).split(',')[0]}</td>
+            <td style="padding: 8px; border-bottom: 1px solid var(--starling-border);">${tx.counterparty}</td>
+            <td style="padding: 8px; border-bottom: 1px solid var(--starling-border);">£${tx.amount}</td>
+         </tr>`;
+      });
+    }
+  }
+
+  function cpPivotToIdentification() {
+    // Hide processing branches
+    document.getElementById('cp-shared-given-card').style.display = 'none';
+    document.getElementById('cp-shared-coerced').style.display = 'none';
+    document.getElementById('cp-shared-subs-check').style.display = 'none';
+    
+    // Show terminal identification block
+    document.getElementById('cp-pivot-end').style.display = 'block';
+  }
+</script>
