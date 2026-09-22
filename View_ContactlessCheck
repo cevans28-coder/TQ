@@ -1,0 +1,101 @@
+<div id="view-contactless-check" class="view-section">
+  <h2 style="margin-bottom: 8px;">Contactless Diagnostics</h2>
+  <p style="color: var(--starling-text-light); margin-bottom: 24px;">This is a Contactless (Card Present) payment. We must establish the physical possession of the card.</p>
+
+  <div style="background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+    <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Was the physical card lost or stolen prior to this payment?</h3>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn-secondary" style="flex: 1;" onclick="handleContactlessLost(true)">Yes, card was lost/stolen</button>
+      <button class="btn-secondary" style="flex: 1;" onclick="handleContactlessLost(false)">No, card was not lost</button>
+    </div>
+  </div>
+
+  <!-- PATH 1: CARD WAS NOT LOST -->
+  <div id="cl-card-given-q" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+    <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Did the customer give their card to someone else?</h3>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('cl-coerced-q').style.display='block'; document.getElementById('cl-not-fraud-pushback').style.display='none';">Yes, gave it to someone</button>
+      <button class="btn-secondary" style="flex: 1;" onclick="showContactlessPushback('not_lost')">No</button>
+    </div>
+  </div>
+
+  <div id="cl-coerced-q" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+    <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Were they coerced into handing the card over?</h3>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn-primary" style="flex: 1; background: var(--starling-navy);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">Yes (Coerced) -> Raise Fraud</button>
+      <button class="btn-secondary" style="flex: 1;" onclick="showContactlessPushback('willingly_shared')">No (Shared Willingly)</button>
+    </div>
+  </div>
+
+  <!-- PATH 2: AUTOMATED SUBSEQUENT CP CHECK (CARD WAS LOST) -->
+  <div id="cl-subsequent-check" style="display: none; animation: fadeIn 0.3s ease;">
+    
+    <!-- Scenario A: No Subsequent Payments -->
+    <div id="cl-no-subs" style="display: none; background: var(--starling-success-bg); border-left: 4px solid var(--starling-success-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+      <h4 style="color: var(--starling-success-text); margin: 0 0 8px 0; font-size: 15px;">✓ Automated Check Passed</h4>
+      <p style="font-size: 14px; margin: 0 0 16px 0; color: var(--starling-text);">No subsequent Card Present transactions found on the statement after this payment.</p>
+      <button class="btn-primary" style="width: 100%; background: var(--starling-navy);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">Raise Card Fraud Claim →</button>
+    </div>
+
+    <!-- Scenario B: Subsequent Payments Found -->
+    <div id="cl-has-subs" style="display: none; background: var(--starling-warning-bg); border-left: 4px solid var(--starling-warning-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+      <h4 style="color: var(--starling-warning-text); margin: 0 0 8px 0; font-size: 15px;">⚠️ Conflicting Evidence Found</h4>
+      <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--starling-text);">The system detected <strong>Card Present</strong> transactions that occurred <em>after</em> the disputed payment. Ask the customer if they recognise these:</p>
+      
+      <table style="width: 100%; border-collapse: collapse; text-align: left; background: #fff; border-radius: 8px; overflow: hidden; margin-bottom: 16px; font-size: 13px;">
+        <thead style="background: var(--starling-sand);">
+          <tr>
+            <th style="padding: 8px; border-bottom: 1px solid var(--starling-border);">Date</th>
+            <th style="padding: 8px; border-bottom: 1px solid var(--starling-border);">Merchant</th>
+            <th style="padding: 8px; border-bottom: 1px solid var(--starling-border);">Amount</th>
+            <th style="padding: 8px; border-bottom: 1px solid var(--starling-border);">Type</th>
+          </tr>
+        </thead>
+        <tbody id="cl-subs-tbody">
+          <!-- Populated by JS -->
+        </tbody>
+      </table>
+
+      <h4 style="font-size: 14px; color: var(--starling-navy); margin: 0 0 12px 0;">Does the customer recognise the subsequent payment(s) above?</h4>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="showContactlessPushback('subsequent_recognised')">Yes, they recognise them</button>
+        <button class="btn-primary" style="flex: 1; background: var(--starling-navy);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">No, they deny them too -> Raise Fraud</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FACT-BASED PUSHBACK & IDENTIFICATION TOOLS -->
+  <div id="cl-not-fraud-pushback" style="display: none; background: var(--starling-bg); border-left: 4px solid var(--starling-warning-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px; animation: fadeIn 0.4s ease;">
+    <h4 style="color: var(--starling-warning-text); margin: 0 0 8px 0; font-size: 15px;">⚠️ Fraud Unlikely - Pivot to Merchant Identification</h4>
+    <p style="font-size: 14px; color: var(--starling-text); margin-bottom: 12px;">Read or copy this polite pushback to the customer, then use the tools below to help them identify the payment.</p>
+    
+    <div id="cl-pushback-text" style="background: #fff; border: 1px solid var(--starling-border); padding: 12px; border-radius: 6px; font-style: italic; font-size: 14px; color: var(--starling-text); margin-bottom: 24px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+      <!-- Populated dynamically -->
+    </div>
+
+    <h4 style="font-size: 14px; color: var(--starling-navy); margin: 0 0 12px 0;">Investigation Tools:</h4>
+    
+    <!-- Smart History Badge -->
+    <div id="cl-history-badge" onclick="openHistoryModal()" style="display: none; margin-bottom: 12px; padding: 10px 14px; background: var(--starling-warning-bg); border: 1px solid var(--starling-warning-text); border-radius: 8px; color: var(--starling-warning-text); font-size: 13px; font-weight: 600; align-items: center; gap: 8px; cursor: pointer;">
+      <span style="font-size: 16px;">💡</span> 
+      <span id="cl-history-text" style="flex: 1;"></span>
+      <span>👁️ View History</span>
+    </div>
+
+    <!-- General Tools -->
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+      <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="executeGoogleSearch()">
+        🔍 Google Search
+      </button>
+      <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openMacroModal()">
+        📚 Scripts & Macros
+      </button>
+      <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openMccModal()">
+        🏢 Lookup MCC
+      </button>
+    </div>
+
+    <hr style="border: none; border-top: 1px solid var(--starling-border); margin: 0 0 16px 0;">
+    <button class="btn-primary" style="width: 100%;" onclick="appState.flags.outcome = 'retail'; navigateToView('view-outcomes')">End Investigation (Route to Retail / Close) →</button>
+  </div>
+</div>
