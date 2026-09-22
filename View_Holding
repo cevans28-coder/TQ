@@ -1,0 +1,18 @@
+<div id="view-holding" class="view-section">
+  <div style="text-align: center; padding: 40px 20px;">
+    <div style="font-size: 48px; margin-bottom: 16px;">🚧</div>
+    <h2 style="color: var(--starling-navy); margin-bottom: 12px;">Payment Type Not Supported Yet</h2>
+    <p style="color: var(--starling-text-light); max-width: 400px; margin: 0 auto 24px;">
+      This decision tree MVP currently only supports Card transactions. The transaction you pasted is categorized as a <strong id="holding-type" style="color: var(--starling-text);"></strong> payment.
+    </p>
+    
+    <div style="background: var(--starling-bg); border: 1px solid var(--starling-border); border-radius: 8px; padding: 16px; margin-bottom: 32px; display: inline-block; text-align: left;">
+      <span style="font-size: 12px; color: var(--starling-text-light); text-transform: uppercase; font-weight: 600;">Detected Raw Type:</span><br>
+      <strong id="holding-raw-type" style="font-family: monospace; font-size: 14px; color: var(--starling-navy);"></strong>
+    </div>
+    
+    <br>
+    <button class="btn-primary" onclick="resetApp()">Start Over</button>
+  </div>
+</div>
+
