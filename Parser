@@ -1,0 +1,597 @@
+/**
+ * Extracts transaction variables from a raw text paste.
+ * Called by the frontend via google.script.run in View_Paste
+ */
+function parseTransactionText(rawText) {
+  if (!rawText) return { success: false, error: "No text provided." };
+  
+  try {
+    const result = { success: true, data: {} };
+    
+    // RegEx Patterns targeting the exact statement format
+    const dateMatch = rawText.match(/Date & Time:\s*(.+)/i);
+    const counterpartyMatch = rawText.match(/Counterparty:\s*(.+)/i);
+    const referenceMatch = rawText.match(/Reference:\s*(.+)/i);
+    const typeMatch = rawText.match(/Transaction Type:\s*(.+)/i);
+    
+    // Matches standard currency format e.g., "GBP 15.99 (Debit)"
+    const amountMatch = rawText.match(/([A-Z]{3})\s*([\d,]+\.\d{2})\s*\((Credit|Debit)\)/i);
+    const statusMatch = rawText.match(/Status:\s*(.+)/i);
+    
+    // Extracted Values
+    result.data.dateTime = dateMatch ? dateMatch[1].trim() : "Unknown";
+    result.data.counterparty = counterpartyMatch ? counterpartyMatch[1].trim() : "Unknown";
+    result.data.reference = referenceMatch ? referenceMatch[1].trim() : "Unknown";
+    result.data.transactionType = typeMatch ? typeMatch[1].trim() : "Unknown";
+    result.data.status = statusMatch ? statusMatch[1].trim() : "Unknown";
+    
+    if (amountMatch) {
+      result.data.currency = amountMatch[1];
+      result.data.amount = amountMatch[2];
+      result.data.direction = amountMatch[3].toUpperCase(); // CREDIT or DEBIT
+    } else {
+      result.data.currency = "Unknown";
+      result.data.amount = "Unknown";
+      result.data.direction = "Unknown";
+    }
+
+    // MVP Routing Logic: Categorize the payment type
+    const typeUpper = result.data.transactionType.toUpperCase();
+    
+    if (typeUpper.includes("CARD") || 
+        typeUpper.includes("CONTACTLESS") || 
+        typeUpper.includes("CHIP_AND_PIN") || 
+        typeUpper.includes("ATM") || 
+        typeUpper.includes("ONLINE")) {
+      result.data.paymentGroup = "CARD";
+    } else if (typeUpper.includes("DIRECT DEBIT")) {
+      result.data.paymentGroup = "DIRECT_DEBIT";
+    } else if (typeUpper.includes("FASTER PAYMENT")) {
+      result.data.paymentGroup = "FASTER_PAYMENT";
+    } else {
+      result.data.paymentGroup = "OTHER";
+    }
+
+    return result;
+
+  } catch (e) {
+    return { 
+      success: false, 
+      error: "Could not read the transaction data. Please ensure you copied the entire block, including 'Date & Time' and 'Status'." 
+    };
+  }
+}
+
+/**
+ * Parses the ACS JSON payload for 3DS Verification.
+ * Called by the frontend via google.script.run in View_Step3
+ */
+function processTransactionData(jsonString) {
+  try {
+    // --- SMART JSON CLEANUP ---
+    let cleanJsonString = jsonString.trim();
+    cleanJsonString = cleanJsonString.replace(/}\s*\{/g, '},{');
+    if (!cleanJsonString.startsWith('[')) {
+       cleanJsonString = '[' + cleanJsonString + ']';
+    }
+    const parsedData = JSON.parse(cleanJsonString);
+    const data = parsedData[0]; // Always grab the primary payload
+
+    // --- COMPREHENSIVE MAPPING DICTIONARIES ---
+    const countryMap = {
+      "036": "Australia", "040": "Austria", "056": "Belgium", "076": "Brazil", 
+      "124": "Canada", "156": "China", "208": "Denmark", "246": "Finland", 
+      "250": "France", "276": "Germany", "344": "Hong Kong", "356": "India", 
+      "372": "Ireland", "380": "Italy", "392": "Japan", "484": "Mexico", 
+      "528": "Netherlands", "554": "New Zealand", "578": "Norway", "616": "Poland", 
+      "620": "Portugal", "702": "Singapore", "710": "South Africa", "724": "Spain", 
+      "752": "Sweden", "756": "Switzerland", "784": "United Arab Emirates", 
+      "826": "United Kingdom", "840": "United States"
+    };
+
+    const currencyMap = {
+      "036": "AUD ($)", "124": "CAD ($)", "156": "CNY (¥)", "208": "DKK (kr)", 
+      "392": "JPY (¥)", "554": "NZD ($)", "578": "NOK (kr)", "702": "SGD ($)", 
+      "710": "ZAR (R)", "752": "SEK (kr)", "756": "CHF (Fr)", "784": "AED (د.إ)", 
+      "826": "GBP (£)", "840": "USD ($)", "978": "EUR (€)"
+    };
+
+    const mccMap = {
+      "3000": "Airlines: United Airlines",
+      "3001": "Airlines: American Airlines",
+      "3005": "Airlines: British Airways",
+      "3008": "Airlines: Lufthansa",
+      "3010": "Airlines: KLM",
+      "3011": "Airlines: Aer Lingus",
+      "3016": "Airlines: SAS",
+      "3020": "Airlines: Air India",
+      "3026": "Airlines: Emirates",
+      "3046": "Airlines: SAS",
+      "3058": "Airlines: Delta",
+      "3063": "Airlines: US Airways",
+      "3103": "Airlines: Garuda",
+      "3136": "Airlines: Qatar Airways",
+      "3174": "Airlines: JetBlue",
+      "3206": "Airlines: China Eastern",
+      "3245": "Airlines: EasyJet",
+      "3246": "Airlines: Ryanair",
+      "3298": "Airlines: Virgin Atlantic",
+      "4111": "Transportation: Local/Suburban Commuter (Train/Ferry)",
+      "4112": "Transportation: Passenger Railways",
+      "4121": "Transportation: Taxicabs and Limousines (Uber/Lyft)",
+      "4131": "Transportation: Bus Lines",
+      "4411": "Transportation: Cruise Lines",
+      "4511": "Transportation: Airlines/Air Carriers (General)",
+      "4722": "Travel Agencies and Tour Operators",
+      "4814": "Telecommunication Services (Calls/Data)",
+      "4816": "Computer Network/Information Services",
+      "4899": "Cable, Satellite, and Other Pay Television/Radio",
+      "4900": "Utilities: Electric, Gas, Heating Oil, Sanitary, Water",
+      "5200": "Home Supply Warehouse Stores",
+      "5310": "Discount Stores",
+      "5311": "Department Stores",
+      "5411": "Grocery Stores/Supermarkets",
+      "5422": "Freezer and Locker Meat Provisioners",
+      "5499": "Misc Food Stores (Convenience Stores, Vending Machines)",
+      "5541": "Service Stations (Fuel/Petrol)",
+      "5542": "Automated Fuel Dispensers",
+      "5651": "Family Clothing Stores",
+      "5691": "Men's and Women's Clothing Stores",
+      "5732": "Electronics Stores",
+      "5812": "Eating Places/Restaurants",
+      "5814": "Fast Food Restaurants",
+      "5912": "Drug Stores and Pharmacies",
+      "4829": "Money Transfer (Wire Transfers)",
+      "5815": "Digital Goods: Audiovisual Media (Books/Movies/Music)",
+      "5816": "Digital Goods: Games",
+      "5817": "Digital Goods: Applications (Excludes Games)",
+      "5818": "Digital Goods: Large Digital Goods Merchant",
+      "5966": "Direct Marketing: Outbound Telemarketing",
+      "5967": "Direct Marketing: Inbound Telemarketing",
+      "5968": "Direct Marketing: Continuity/Subscription Merchant",
+      "5969": "Direct Marketing: Other Direct Marketers",
+      "5999": "Miscellaneous and Specialty Retail Stores",
+      "6010": "Financial Institutions: Manual Cash Disbursements",
+      "6011": "Financial Institutions: Automated Cash Dispense (ATM)",
+      "6012": "Financial Institutions: Merchandise and Services",
+      "6051": "Non-FI: Cryptocurrency, Money Orders, Account Funding",
+      "6211": "Securities Brokers/Dealers (Forex/Trading)",
+      "6540": "Non-Financial Institutions: Stored Value Card Purchase/Load",
+      "7273": "Dating and Escort Services",
+      "7801": "Government-Licensed On-Line Casinos (On-Line Gambling)",
+      "7802": "Government-Licensed Horse/Dog Racing",
+      "7994": "Video Game Arcades/Establishments",
+      "7995": "Betting (Sports, Casino, Lottery)",
+      "7011": "Lodging: Hotels, Motels, Resorts",
+      "7311": "Advertising Services",
+      "7399": "Business Services (Not Elsewhere Classified)",
+      "8999": "Professional Services (Not Elsewhere Classified)"
+    };
+
+    const authIndMap = {
+      "01": "One-off Payment (Standard Checkout)",
+      "02": "Recurring Subscription (Continuous Billing)",
+      "03": "Installment Payment",
+      "04": "Add Card / Card on File (Saving card details)",
+      "05": "Maintain Card / Account Update",
+      "06": "Cardholder Verification for EMV Token"
+    };
+
+    const challengeIndMap = {
+      "01": "No preference",
+      "02": "No challenge requested",
+      "03": "Challenge requested (Merchant preference)",
+      "04": "Challenge Mandated (Regulatory/SCA requirement)",
+      "05": "No challenge requested (Transactional risk analysis)",
+      "06": "No challenge requested (Data share only)",
+      "07": "No challenge requested (SCA already performed)"
+    };
+
+    const deviceChannelMap = {
+      "01": "Mobile App Checkout",
+      "02": "Web Browser Checkout",
+      "03": "Smart Device / 3DS Requestor"
+    };
+
+    const compIndMap = {
+      "Y": "Successfully Authenticated via App/OTP",
+      "N": "Authentication Failed (Declined or Timeout)",
+      "U": "Authentication Could Not Be Performed",
+      "A": "Attempted Authentication",
+      "R": "Authentication Rejected (System Level)"
+    };
+
+    const transTypeMap = {
+      "01": "Goods/Service Purchase",
+      "03": "Check Acceptance",
+      "10": "Account Funding (e.g., Wallet/Crypto Top-up)",
+      "11": "Quasi-Cash Transaction (e.g., Gambling/Money Orders)",
+      "28": "Prepaid Activation and Load"
+    };
+
+    const messageCategoryMap = {
+      "01": "Payment Authentication (PA) - Actual Charge",
+      "02": "Non-Payment Authentication (NPA) - Identity Check / Add Card"
+    };
+
+    const languageMap = {
+      "en": "English", "es": "Spanish", "fr": "French", "de": "German", 
+      "zh": "Chinese", "ru": "Russian", "it": "Italian", "ja": "Japanese"
+    };
+
+    const addrMatchMap = {
+      "Y": "Yes (Billing & Shipping are the same)",
+      "N": "No (Different addresses)",
+    };
+
+    // --- FALLBACK RESOLVERS ---
+    const resolveCountry = (code) => countryMap[code] ? `${countryMap[code]} (Code: ${code})` : `Unknown Country (Code: ${code || 'N/A'})`;
+    const resolveCurrency = (code) => currencyMap[code] ? `${currencyMap[code]} (Code: ${code})` : `Unknown Currency (Code: ${code || 'N/A'})`;
+    const resolveMcc = (code) => mccMap[code] ? `${mccMap[code]} (MCC: ${code})` : `Unknown Category (MCC: ${code || 'N/A'})`;
+    const resolveAuthInd = (code) => authIndMap[code] ? authIndMap[code] : `Unknown Intent (Code: ${code || 'N/A'})`;
+    const resolveChallengeInd = (code) => challengeIndMap[code] ? challengeIndMap[code] : `Unknown Challenge (Code: ${code || 'N/A'})`;
+    const resolveTransType = (code) => transTypeMap[code] ? transTypeMap[code] : `Unknown Type (Code: ${code || 'N/A'})`;
+    const resolveMsgCat = (code) => messageCategoryMap[code] ? messageCategoryMap[code] : `Unknown Category (Code: ${code || 'N/A'})`;
+    const resolveLang = (code) => {
+      let baseCode = (code || "").split("-")[0].toLowerCase();
+      return languageMap[baseCode] ? `${languageMap[baseCode]} (${code})` : (code || 'N/A');
+    };
+
+    // --- IP GEOLOCATION CACHING ---
+    let location = "Unknown";
+    let browserIP = data.browserIP || "N/A";
+    if (data.browserIP) {
+      const cache = CacheService.getScriptCache();
+      const cachedLocation = cache.get(data.browserIP);
+      if (cachedLocation) {
+        location = cachedLocation + " (Cached)";
+      } else {
+        try {
+          const response = UrlFetchApp.fetch('https://get.geojs.io/v1/ip/geo/' + data.browserIP + '.json');
+          const geoData = JSON.parse(response.getContentText());
+          location = geoData.city + ', ' + geoData.country;
+          cache.put(data.browserIP, location, 21600); 
+        } catch(e) {
+          location = "Lookup failed";
+        }
+      }
+    }
+
+    // --- DATA FORMATTING ---
+    let actualAmount = "0.00";
+    if (data.purchaseAmount && data.purchaseExponent) {
+      actualAmount = (parseInt(data.purchaseAmount) / Math.pow(10, parseInt(data.purchaseExponent))).toFixed(2);
+    }
+
+    let formattedDate = data.purchaseDate || "N/A";
+    if (data.purchaseDate && data.purchaseDate.length === 14) {
+      const y = data.purchaseDate.substring(0,4), m = data.purchaseDate.substring(4,6), d = data.purchaseDate.substring(6,8);
+      const h = data.purchaseDate.substring(8,10), min = data.purchaseDate.substring(10,12), s = data.purchaseDate.substring(12,14);
+      
+      formattedDate = `${d}/${m}/${y} ${h}:${min}:${s}`;
+    }
+
+    let formattedExpiry = data.cardExpiryDate || "N/A";
+    if (data.cardExpiryDate && data.cardExpiryDate.length === 4) {
+      formattedExpiry = `${data.cardExpiryDate.substring(2,4)}/20${data.cardExpiryDate.substring(0,2)}`;
+    }
+
+    let tzString = "Unknown";
+    if (data.browserTZ !== undefined && data.browserTZ !== null) {
+      let offset = parseInt(data.browserTZ);
+      if (!isNaN(offset)) {
+        let sign = offset <= 0 ? "+" : "-";
+        let hours = Math.abs(offset) / 60;
+        tzString = `UTC${sign}${hours}`;
+      }
+    }
+
+    // --- BILLING ADDRESS FORMATTING ---
+    let billingAddress = "N/A";
+    if (data.billAddrLine1 || data.billAddrPostCode) {
+      let line1 = data.billAddrLine1 || "";
+      let city = (data.billAddrCity && data.billAddrCity !== "Null") ? data.billAddrCity : "";
+      let postCode = data.billAddrPostCode || "";
+      billingAddress = `${line1}, ${city} ${postCode}`.replace(/,\s*,/g, ",").trim();
+      if (billingAddress.endsWith(",")) billingAddress = billingAddress.slice(0, -1);
+    }
+
+    // --- FLAG DUMMY GATEWAY DATA ---
+    let customerEmail = data.email || "N/A";
+    if (customerEmail.toLowerCase() === "nobody@cybersource.com") {
+      customerEmail = "Gateway Placeholder (Not provided by merchant)";
+    }
+
+    let customerPhone = "N/A";
+    if (data.homePhone && data.homePhone.subscriber) {
+      customerPhone = data.homePhone.subscriber;
+      if (customerPhone === "111111111" || customerPhone === "000000000") {
+         customerPhone = "Gateway Placeholder (Not provided by merchant)";
+      } else if (data.homePhone.cc) {
+         customerPhone = `+${data.homePhone.cc} ${customerPhone}`;
+      }
+    }
+
+    // --- DYNAMIC RISK EXTRACTOR ---
+    let riskDecision = "N/A", riskScore = "N/A";
+    if (data.messageExtension && Array.isArray(data.messageExtension)) {
+      for (let i = 0; i < data.messageExtension.length; i++) {
+        let ext = data.messageExtension[i];
+        if (ext.id === "A000000004-acsRBA" && ext.data && ext.data["A000000004-acsRBA"]) {
+          riskDecision = ext.data["A000000004-acsRBA"].decision || "N/A";
+          riskScore = ext.data["A000000004-acsRBA"].score || "N/A";
+          break; 
+        }
+      }
+    }
+
+    // --- MOBILE SDK FORENSICS (Base64 Decoding) ---
+    let sdkAppBundle = "N/A", sdkHardware = "N/A", sdkOS = "N/A", sdkLocalIP = "N/A";
+    if (data.deviceInfo) {
+      try {
+        let decodedDeviceString = Utilities.newBlob(Utilities.base64Decode(data.deviceInfo)).getDataAsString();
+        let sdkData = JSON.parse(decodedDeviceString);
+        
+        if (sdkData.DD) {
+          sdkAppBundle = sdkData.DD.C013 || "N/A";
+          sdkHardware = sdkData.DD.C002 || sdkData.DD.I002 || "N/A";
+          sdkOS = sdkData.DD.C003 || sdkData.DD.C001 || "N/A";
+          sdkLocalIP = sdkData.DD.C010 || "N/A";
+        }
+      } catch(e) {
+        sdkAppBundle = "Error decoding payload";
+      }
+    }
+
+    // --- RETURN DATA ---
+    return {
+      success: true,
+      amount: actualAmount,
+      currency: resolveCurrency(data.purchaseCurrency),
+      date: formattedDate,
+      merchant: data.merchantName || "Unknown Merchant",
+      country: resolveCountry(data.merchantCountryCode),
+      mcc: resolveMcc(data.mcc),
+      ip: browserIP,
+      location: location,
+      name: data.cardholderName || "N/A",
+      riskDecision: riskDecision,
+      riskScore: riskScore,
+      
+      purchaseDevice: data.browserUserAgent || "N/A (App Checkout)",
+      purchaseChannel: deviceChannelMap[data.deviceChannel] || `Unknown Channel (Code: ${data.deviceChannel || 'N/A'})`,
+      authType: resolveAuthInd(data.threeDSRequestorAuthenticationInd),
+      authResult: compIndMap[data.threeDSCompInd] || `Unknown Result (Code: ${data.threeDSCompInd || 'N/A'})`,
+
+      transCategory: resolveTransType(data.transType),
+      messageCat: resolveMsgCat(data.messageCategory),
+      screenSize: (data.browserScreenWidth && data.browserScreenHeight) ? `${data.browserScreenWidth} x ${data.browserScreenHeight}` : "N/A",
+      timezone: tzString,
+      language: resolveLang(data.browserLanguage),
+      expiry: formattedExpiry,
+      dsTransID: data.dsTransID || "N/A",
+      threeDSServerTransID: data.threeDSServerTransID || "N/A",
+      
+      sdkAppBundle: sdkAppBundle,
+      sdkHardware: sdkHardware,
+      sdkOS: sdkOS,
+      sdkLocalIP: sdkLocalIP,
+
+      billingAddress: billingAddress,
+      addressMatch: addrMatchMap[data.addrMatch] || data.addrMatch || "N/A",
+      email: customerEmail,
+      phone: customerPhone,
+      challengeIndicator: resolveChallengeInd(data.threeDSRequestorChallengeInd)
+    };
+
+  } catch (e) {
+    return { success: false, error: "Invalid JSON format. Please ensure you copied the payload correctly." };
+  }
+}
+
+// --- CSV PARSING ENGINE ---
+
+function robustCsvParse(csvText) {
+  if(!csvText) return [];
+  let cleanText = csvText.replace(/\t/g, ',');
+  cleanText = cleanText.replace(/[\u200B-\u200D\uFEFF]/g, '');
+  try {
+    return Utilities.parseCsv(cleanText);
+  } catch (err) {
+    let lines = cleanText.split(/\r?\n/);
+    let result = [];
+    for (let i = 0; i < lines.length; i++) {
+      let line = lines[i].trim().replace(/"/g, ""); 
+      let parts = line.split(',');
+      if (parts.length <= 10) result.push(parts);
+      else {
+        let reconstructed = [];
+        let len = parts.length;
+        reconstructed[0] = parts[0]; reconstructed[1] = parts[1]; reconstructed[2] = parts[2];
+        reconstructed[9] = parts[len - 1]; reconstructed[8] = parts[len - 2]; reconstructed[7] = parts[len - 3];
+        reconstructed[6] = parts[len - 4]; reconstructed[5] = parts[len - 5]; reconstructed[4] = parts[len - 6];
+        let refParts = [];
+        for (let k = 3; k <= len - 7; k++) refParts.push(parts[k]);
+        reconstructed[3] = refParts.join(', ');
+        result.push(reconstructed);
+      }
+    }
+    return result;
+  }
+}
+
+function processStatementCsv(csvText) {
+  try {
+    const data = robustCsvParse(csvText);
+    if (data.length < 2) return { success: false, error: "Invalid CSV or empty statement." };
+    
+    // Map headers exactly to your new spec
+    const headers = data[0].map(h => (h || "").trim().toLowerCase());
+    
+    const timeIdx = headers.indexOf('time');
+    const sourceIdx = headers.indexOf('source');
+    const subTypeIdx = headers.indexOf('source sub-type');
+    const refIdx = headers.indexOf('reference');
+    const cpIdx = headers.indexOf('counterparty');
+    const statusIdx = headers.indexOf('status');
+    const amtIdx = headers.indexOf('amount'); // We use the final Amount column
+
+    if (timeIdx === -1 || amtIdx === -1) {
+      return { success: false, error: "Could not detect 'Time' or 'Amount' columns. Ensure you copied the exact CSV headers." };
+    }
+
+    let transactions = [];
+    
+    for (let i = 1; i < data.length; i++) {
+      if (data[i].length < headers.length) continue; 
+      
+      let rawAmt = parseFloat(data[i][amtIdx]);
+      if (isNaN(rawAmt)) continue;
+      
+      // We only want Outbound payments (Debits), which are negative
+      if (rawAmt >= 0) continue; 
+      
+      let source = sourceIdx !== -1 ? data[i][sourceIdx] : "";
+      let subType = subTypeIdx !== -1 ? data[i][subTypeIdx] : "";
+      let fullType = (source + " " + subType).trim();
+      if (!fullType) fullType = "Unknown";
+      
+      let pGroup = "OTHER";
+      const tUpper = fullType.toUpperCase();
+      if (tUpper.includes("CARD") || tUpper.includes("CONTACTLESS") || tUpper.includes("CHIP") || tUpper.includes("ONLINE") || tUpper.includes("APPLE") || tUpper.includes("GOOGLE") || tUpper.includes("ATM") || tUpper.includes("POS")) {
+        pGroup = "CARD";
+      } else if (tUpper.includes("DIRECT DEBIT") || tUpper.includes("DD")) {
+        pGroup = "DIRECT_DEBIT";
+      } else if (tUpper.includes("FASTER PAYMENT") || tUpper.includes("FPS")) {
+        pGroup = "FASTER_PAYMENT";
+      }
+
+      let statusStr = statusIdx !== -1 && data[i][statusIdx] ? data[i][statusIdx].trim() : "Settled";
+      // Normalize capitalization (e.g. "SETTLED" -> "Settled")
+      statusStr = statusStr.charAt(0).toUpperCase() + statusStr.slice(1).toLowerCase();
+
+      transactions.push({
+        id: 'tx_' + i,
+        dateTime: data[i][timeIdx] || "",
+        counterparty: cpIdx !== -1 && data[i][cpIdx] ? data[i][cpIdx].trim() : "Unknown",
+        reference: refIdx !== -1 && data[i][refIdx] ? data[i][refIdx].trim() : "None",
+        transactionType: fullType, 
+        amount: Math.abs(rawAmt).toFixed(2), 
+        currency: "GBP", 
+        status: statusStr,
+        direction: "DEBIT",
+        paymentGroup: pGroup,
+        rawTimeMs: new Date(data[i][timeIdx]).getTime() || 0
+      });
+    }
+
+    return { success: true, data: transactions };
+  } catch (e) {
+    return { success: false, error: "Parsing error: " + e.toString() };
+  }
+}
+
+function processTransactionData(jsonString) {
+  try {
+    let cleanJsonString = jsonString.trim();
+    cleanJsonString = cleanJsonString.replace(/}\s*\{/g, '},{');
+    if (!cleanJsonString.startsWith('[')) {
+       cleanJsonString = '[' + cleanJsonString + ']';
+    }
+    const parsedData = JSON.parse(cleanJsonString);
+    const data = parsedData[0]; 
+
+    // --- COMPREHENSIVE MAPPING DICTIONARIES ---
+    const deviceChannelMap = {
+      "01": "Mobile App Checkout",
+      "02": "Web Browser Checkout",
+      "03": "Smart Device / 3DS Requestor"
+    };
+
+    const compIndMap = {
+      "Y": "Successfully Authenticated via App/OTP",
+      "N": "Authentication Failed (Declined or Timeout)",
+      "U": "Authentication Could Not Be Performed",
+      "A": "Attempted Authentication",
+      "R": "Authentication Rejected (System Level)"
+    };
+
+    // --- IP GEOLOCATION CACHING ---
+    let location = "Unknown";
+    let browserIP = data.browserIP || "N/A";
+    if (data.browserIP) {
+      const cache = CacheService.getScriptCache();
+      const cachedLocation = cache.get(data.browserIP);
+      if (cachedLocation) {
+        location = cachedLocation + " (Cached)";
+      } else {
+        try {
+          const response = UrlFetchApp.fetch('https://get.geojs.io/v1/ip/geo/' + data.browserIP + '.json');
+          const geoData = JSON.parse(response.getContentText());
+          location = geoData.city + ', ' + geoData.country;
+          cache.put(data.browserIP, location, 21600); 
+        } catch(e) {
+          location = "Lookup failed";
+        }
+      }
+    }
+
+    // --- BILLING ADDRESS FORMATTING ---
+    let billingAddress = "N/A";
+    if (data.billAddrLine1 || data.billAddrPostCode) {
+      let line1 = data.billAddrLine1 || "";
+      let city = (data.billAddrCity && data.billAddrCity !== "Null") ? data.billAddrCity : "";
+      let postCode = data.billAddrPostCode || "";
+      billingAddress = `${line1}, ${city} ${postCode}`.replace(/,\s*,/g, ",").trim();
+      if (billingAddress.endsWith(",")) billingAddress = billingAddress.slice(0, -1);
+    }
+
+    // --- FLAG DUMMY GATEWAY DATA ---
+    let customerEmail = data.email || "N/A";
+    if (customerEmail.toLowerCase() === "nobody@cybersource.com") {
+      customerEmail = "Not provided by merchant";
+    }
+
+    let customerPhone = "N/A";
+    if (data.homePhone && data.homePhone.subscriber) {
+      customerPhone = data.homePhone.subscriber;
+      if (customerPhone === "111111111" || customerPhone === "000000000") {
+         customerPhone = "Not provided by merchant";
+      } else if (data.homePhone.cc) {
+         customerPhone = `+${data.homePhone.cc} ${customerPhone}`;
+      }
+    }
+
+    // --- MOBILE SDK FORENSICS (Base64 Decoding) ---
+    let sdkHardware = "N/A", sdkOS = "N/A";
+    if (data.deviceInfo) {
+      try {
+        let decodedDeviceString = Utilities.newBlob(Utilities.base64Decode(data.deviceInfo)).getDataAsString();
+        let sdkData = JSON.parse(decodedDeviceString);
+        if (sdkData.DD) {
+          sdkHardware = sdkData.DD.C002 || sdkData.DD.I002 || "N/A";
+          sdkOS = sdkData.DD.C003 || sdkData.DD.C001 || "N/A";
+        }
+      } catch(e) {}
+    }
+
+    // --- RETURN DATA ---
+    return {
+      success: true,
+      ip: browserIP,
+      location: location,
+      name: data.cardholderName || "N/A",
+      purchaseDevice: data.browserUserAgent || "N/A",
+      purchaseChannel: deviceChannelMap[data.deviceChannel] || "Unknown",
+      authResult: compIndMap[data.threeDSCompInd] || "Unknown",
+      sdkHardware: sdkHardware,
+      sdkOS: sdkOS,
+      billingAddress: billingAddress,
+      email: customerEmail,
+      phone: customerPhone
+    };
+
+  } catch (e) {
+    return { success: false, error: "Invalid format. Please ensure you copied the payload correctly." };
+  }
+}
