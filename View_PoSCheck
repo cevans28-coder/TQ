@@ -1,0 +1,24 @@
+<div id="view-pos-check" class="view-section">
+  <h2 style="margin-bottom: 8px;">Authentication Warning</h2>
+  <p style="color: var(--starling-text-light); margin-bottom: 24px;">This payment was strongly authenticated or required physical possession at the time of purchase.</p>
+  
+  <div style="background: var(--starling-warning-bg); border-left: 4px solid var(--starling-warning-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <h4 style="color: var(--starling-warning-text); margin: 0 0 8px 0; font-size: 15px;">Transaction Type: <span id="pos-check-type"></span></h4>
+    <p style="font-size: 14px; margin: 0; color: var(--starling-text); line-height: 1.5;">
+      <strong>Agent Action:</strong> Inform the customer that because this is a <strong id="pos-check-type-inline"></strong> payment, it was securely authenticated (via PIN, biometrics, or physical possession of the card/device). <br><br>
+      Explain gently that because of this, it is highly unlikely we will be able to raise this as a fraud claim, and you will now work with them to try to identify the merchant.
+    </p>
+  </div>
+
+  <!-- Physical Card Stolen Fallback (Hidden for Mobile Wallet) -->
+  <div id="physical-card-check" style="display: none; margin-bottom: 24px; padding-top: 16px; border-top: 1px solid var(--starling-border);">
+     <p style="font-size: 14px; color: var(--starling-text); margin-bottom: 12px;"><em>If the customer claims their physical card was lost/stolen prior to this payment:</em></p>
+     <button class="btn-secondary" style="border-color: var(--starling-error-text); color: var(--starling-error-text); width: 100%; text-align: left;" onclick="appState.flags.outcome = 'lost_stolen'; navigateToView('view-outcomes')">
+        ❌ The physical card is missing / stolen
+     </button>
+  </div>
+
+  <button class="btn-primary" style="width: 100%; font-size: 15px; padding: 16px;" onclick="navigateToView('view-step1')">
+    ✅ Customer informed. Proceed to Memory Jogging →
+  </button>
+</div>
