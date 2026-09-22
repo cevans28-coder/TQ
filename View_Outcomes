@@ -1,0 +1,31 @@
+<div id="view-outcomes" class="view-section">
+  <div id="outcome-header" style="text-align: center; padding: 20px 0 32px 0;">
+    <div id="outcome-icon" style="font-size: 48px; margin-bottom: 16px;"></div>
+    <h2 id="outcome-title" style="color: var(--starling-navy); margin-bottom: 8px;"></h2>
+    <p id="outcome-desc" style="color: var(--starling-text-light); max-width: 500px; margin: 0 auto;"></p>
+  </div>
+
+  <div id="action-panel" style="background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 24px;">
+    <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">How do you need to proceed?</h3>
+    
+    <div style="display: flex; gap: 16px; flex-wrap: wrap;">
+      
+      <!-- Option A: Launch Existing Tool -->
+      <button id="btn-launch-tool" class="btn-primary" style="flex: 1; min-width: 250px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="launchHandoffTool()">
+        🚀 Launch Claim Tool
+      </button>
+
+      <!-- Option B: Manual Escalation -->
+      <button id="btn-copy-escalation" class="btn-secondary" style="flex: 1; min-width: 250px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="copyEscalationText()">
+        📋 Copy Escalation Template
+      </button>
+
+    </div>
+    <div id="copy-feedback" style="display: none; text-align: center; margin-top: 16px; color: var(--starling-success-text); font-size: 14px; font-weight: 600;">✅ Copied to clipboard! Paste this in your chat or ticket.</div>
+  </div>
+  
+  <div style="text-align: center; margin-top: 32px;">
+    <a href="#" style="color: var(--starling-text-light); text-decoration: underline; font-size: 14px;" onclick="resetApp()">Start over with a new transaction</a>
+  </div>
+</div>
+
