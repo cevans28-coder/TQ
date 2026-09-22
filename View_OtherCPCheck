@@ -1,0 +1,177 @@
+<div id="view-other-cp-check" class="view-section">
+  <h2 style="margin-bottom: 8px;" id="cp-dynamic-title">Card Present Diagnostics</h2>
+  <p style="color: var(--starling-text-light); margin-bottom: 24px;" id="cp-dynamic-subtitle">Follow the steps below to establish liability for this payment.</p>
+
+  <!-- ========================================== -->
+  <!-- 1. CHIP & PIN FLOW                         -->
+  <!-- ========================================== -->
+  <div id="flow-chip-pin" style="display: none;">
+    
+    <div style="background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+      <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Was the physical card lost or stolen prior to this payment?</h3>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="cpHandleLost('chip_pin', true)">Yes, card was lost/stolen</button>
+        <button class="btn-secondary" style="flex: 1;" onclick="cpHandleLost('chip_pin', false)">No, card was not lost</button>
+      </div>
+    </div>
+
+    <!-- Pushback Script -->
+    <div id="cp-pin-pushback" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+      <h4 style="font-size: 15px; color: var(--starling-navy); margin: 0 0 12px 0;">Agent Action: Pushback & Probe</h4>
+      <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--starling-text);">Read this to the customer to challenge the PIN compromise:</p>
+      
+      <div style="background: var(--starling-bg); border-left: 4px solid var(--starling-primary); padding: 12px; font-style: italic; font-size: 14px; color: var(--starling-text); margin-bottom: 16px;">
+        "This payment was verified using your physical card and your secret PIN. For this to happen, the person using the card must have known your PIN. Have you written your PIN down anywhere, shared it with anyone, or do you think someone could have observed you entering it recently?"
+      </div>
+
+      <h4 style="font-size: 14px; color: var(--starling-navy); margin: 0 0 12px 0;">Is the payment still unrecognised?</h4>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="cpTriggerSubsCheck()">Yes, still unrecognised</button>
+        <button class="btn-primary" style="flex: 1;" onclick="cpPivotToIdentification()">No, they recognise it -> End</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 2. MAGSTRIPE FLOW                          -->
+  <!-- ========================================== -->
+  <div id="flow-magstripe" style="display: none;">
+    
+    <div style="background: var(--starling-bg); border-left: 4px solid var(--starling-primary); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+      <h4 style="font-size: 15px; color: var(--starling-navy); margin: 0 0 8px 0;">Stage 1: Merchant Info (Automated)</h4>
+      <p style="font-size: 14px; color: var(--starling-text); margin: 0 0 12px 0;">Use the MCC data below to advise the customer of the merchant type:</p>
+      <div style="font-family: monospace; background: #fff; padding: 12px; border-radius: 6px; font-size: 13px; font-weight: 600; margin-bottom: 12px;" id="magstripe-mcc-output"></div>
+      
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="cpPivotToIdentification()">They recognise it -> End</button>
+        <button class="btn-primary" style="flex: 1;" onclick="document.getElementById('magstripe-lost-check').style.display='block'">Still unrecognised -> Proceed</button>
+      </div>
+    </div>
+
+    <div id="magstripe-lost-check" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+      <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Was the physical card lost or stolen prior to this payment?</h3>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="cpHandleLost('magstripe', true)">Yes, card was lost/stolen</button>
+        <button class="btn-secondary" style="flex: 1;" onclick="cpHandleLost('magstripe', false)">No, card was not lost</button>
+      </div>
+    </div>
+
+    <div id="magstripe-controls-check" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+      <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 12px;">Check Card Controls in MP</h3>
+      <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--starling-text);">MagStripe is disabled by default. Was it enabled via the app prior to this transaction?</p>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('magstripe-pushback').style.display='block'">Yes, it was enabled</button>
+        <button class="btn-primary" style="flex: 1;" onclick="cpTriggerSubsCheck()">No, it was not -> Skip to CP Check</button>
+      </div>
+    </div>
+
+    <div id="magstripe-pushback" style="display: none; background: var(--starling-warning-bg); border-left: 4px solid var(--starling-warning-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+      <h4 style="font-size: 14px; color: var(--starling-warning-text); margin: 0 0 8px 0;">Agent Action: Pushback</h4>
+      <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--starling-text);">Ask the customer why and how they enabled MagStripe to jog their memory. Are they still denying the payment?</p>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-primary" style="flex: 1; background: var(--starling-navy);" onclick="cpTriggerSubsCheck()">Yes, still denied -> Proceed</button>
+        <button class="btn-secondary" style="flex: 1;" onclick="cpPivotToIdentification()">No, recognised -> End</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- 3. MANUAL KEY ENTRY (MKE) FLOW             -->
+  <!-- ========================================== -->
+  <div id="flow-mke" style="display: none;">
+    
+    <div style="background: var(--starling-bg); border-left: 4px solid var(--starling-primary); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+      <h4 style="font-size: 15px; color: var(--starling-navy); margin: 0 0 8px 0;">Stage 1: Previous Merchant Use</h4>
+      <p style="font-size: 14px; color: var(--starling-text); margin: 0 0 8px 0;"><strong>Automated 18-Month Check:</strong> <span id="mke-auto-history-result" style="font-weight: 600;"></span></p>
+      
+      <div style="background: var(--starling-warning-bg); padding: 12px; border-radius: 8px; font-size: 13px; color: var(--starling-warning-text); margin-bottom: 12px; font-weight: 600;">
+        ⚠️ MKE is common with addendum disputes. Please manually check the Feed on MP for the last 48 months to ensure no older history exists.
+      </div>
+      
+      <h4 style="font-size: 14px; color: var(--starling-navy); margin: 0 0 12px 0;">Has the customer used this merchant before?</h4>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('mke-recognise-history').style.display='block'; document.getElementById('mke-explanation').style.display='none';">Yes, history found</button>
+        <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('mke-explanation').style.display='block'; document.getElementById('mke-recognise-history').style.display='none';">No history found</button>
+      </div>
+    </div>
+
+    <!-- History Found Branch -->
+    <div id="mke-recognise-history" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+      <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 12px;">Remind the customer of previous transactions</h3>
+      <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--starling-text);">Does the customer recognise the original/previous transactions?</p>
+      <div style="display: flex; flex-direction: column; gap: 8px;">
+        <button class="btn-secondary" style="text-align: left;" onclick="cpPivotToIdentification()">✅ Yes, recognises ALL -> End Process</button>
+        <button class="btn-secondary" style="text-align: left; color: var(--starling-primary); border-color: var(--starling-primary);" onclick="appState.flags.outcome = 'retail'; navigateToView('view-outcomes')">⚠️ Recognises original, but NOT this MKE -> Route to Retail / Addendum Dispute</button>
+        <button class="btn-primary" style="text-align: left;" onclick="document.getElementById('mke-explanation').style.display='block'">❌ Still unrecognised completely -> Proceed</button>
+      </div>
+    </div>
+
+    <!-- No History / Denied History Branch -->
+    <div id="mke-explanation" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+      <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 12px;">Stage 2: Explain Payment Method</h3>
+      <div style="background: var(--starling-bg); border-left: 4px solid var(--starling-primary); padding: 12px; font-style: italic; font-size: 14px; color: var(--starling-text); margin-bottom: 16px;">
+        "Manual Key Entry payments require someone to physically type your card number, expiry date, and CVV into a terminal. Have you provided your card details to anyone over the phone or in person recently?"
+      </div>
+      <h4 style="font-size: 14px; color: var(--starling-navy); margin: 0 0 12px 0;">Did the customer provide their details?</h4>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="cpPivotToIdentification()">Yes -> Not Fraud (End)</button>
+        <button class="btn-primary" style="flex: 1; background: var(--starling-error-text);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">No -> Raise Fraud Claim</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- SHARED COMPONENTS (CP SUBSEQUENT CHECK)    -->
+  <!-- ========================================== -->
+  <div id="cp-shared-given-card" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+    <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Did the customer give their card to someone else?</h3>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('cp-shared-coerced').style.display='block'; document.getElementById('cp-pivot-end').style.display='none';">Yes, gave it to someone</button>
+      <button class="btn-secondary" style="flex: 1;" onclick="cpPivotToIdentification()">No -> Pivot to Identification</button>
+    </div>
+  </div>
+
+  <div id="cp-shared-coerced" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px; animation: fadeIn 0.3s ease;">
+    <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Were they coerced into handing the card over?</h3>
+    <div style="display: flex; gap: 12px;">
+      <button class="btn-primary" style="flex: 1; background: var(--starling-navy);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">Yes (Coerced) -> Raise Fraud</button>
+      <button class="btn-secondary" style="flex: 1;" onclick="cpPivotToIdentification()">No (Shared Willingly) -> Pivot</button>
+    </div>
+  </div>
+
+  <div id="cp-shared-subs-check" style="display: none; animation: fadeIn 0.3s ease;">
+    <!-- Sub-scenario: No Subs -->
+    <div id="cp-shared-no-subs" style="display: none; background: var(--starling-success-bg); border-left: 4px solid var(--starling-success-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+      <h4 style="color: var(--starling-success-text); margin: 0 0 8px 0; font-size: 15px;">✓ Automated Check Passed</h4>
+      <p style="font-size: 14px; margin: 0 0 16px 0; color: var(--starling-text);">No subsequent Card Present transactions found.</p>
+      <button class="btn-primary" style="width: 100%; background: var(--starling-navy);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">Raise Card Fraud Claim →</button>
+    </div>
+    <!-- Sub-scenario: Has Subs -->
+    <div id="cp-shared-has-subs" style="display: none; background: var(--starling-warning-bg); border-left: 4px solid var(--starling-warning-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+      <h4 style="color: var(--starling-warning-text); margin: 0 0 8px 0; font-size: 15px;">⚠️ Conflicting Evidence Found</h4>
+      <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--starling-text);">The system detected <strong>Card Present</strong> transactions that occurred <em>after</em> the disputed payment. Do they recognise these?</p>
+      <table style="width: 100%; border-collapse: collapse; text-align: left; background: #fff; border-radius: 8px; overflow: hidden; margin-bottom: 16px; font-size: 13px;">
+        <thead style="background: var(--starling-sand);">
+          <tr><th style="padding: 8px;">Date</th><th style="padding: 8px;">Merchant</th><th style="padding: 8px;">Amount</th></tr>
+        </thead>
+        <tbody id="cp-shared-subs-tbody"></tbody>
+      </table>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="cpPivotToIdentification()">Yes, recognised -> Retail / End</button>
+        <button class="btn-primary" style="flex: 1; background: var(--starling-navy);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">No, denied -> Raise Fraud</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SHARED TERMINAL PIVOT -->
+  <div id="cp-pivot-end" style="display: none; background: var(--starling-bg); border-left: 4px solid var(--starling-warning-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px; animation: fadeIn 0.4s ease;">
+    <h4 style="color: var(--starling-warning-text); margin: 0 0 8px 0; font-size: 15px;">⚠️ Fraud Unlikely - Pivot to Merchant Identification</h4>
+    <p style="font-size: 14px; color: var(--starling-text); margin-bottom: 16px;">Based on the evidence, we cannot raise a fraud claim. Use the tools below to help the customer identify the payment.</p>
+    
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
+      <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="executeGoogleSearch()">🔍 Google Search</button>
+      <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openMacroModal()">📚 Scripts & Macros</button>
+    </div>
+    <button class="btn-primary" style="width: 100%;" onclick="appState.flags.outcome = 'retail'; navigateToView('view-outcomes')">End Investigation (Route to Retail / Close) →</button>
+  </div>
+</div>
