@@ -1,0 +1,417 @@
+<div id="view-paste" class="view-section">
+    <h2 style="margin-bottom: 8px">Upload Customer Statement</h2>
+
+    <p style="color: var(--starling-text-light); margin-bottom: 16px">
+        Paste the customer's full account CSV statement below. We will use this to trace historical merchant usage
+        automatically.
+    </p>
+
+    <div
+        style="
+            background: var(--starling-warning-bg);
+            border-left: 4px solid var(--starling-warning-text);
+            padding: 12px 16px;
+            border-radius: 0 8px 8px 0;
+            margin-bottom: 24px;
+            color: var(--starling-warning-text);
+            font-size: 14px;
+            font-weight: 500;
+        "
+    >
+        ⚠️ Please supply at least 18 months of CSV activity if available to ensure accurate history matching.
+    </div>
+
+    <textarea
+        id="paste-input"
+        style="
+            width: 100%;
+            height: 120px;
+            padding: 16px;
+            border: 1px solid var(--starling-border);
+            border-radius: 12px;
+            font-family: monospace;
+            font-size: 13px;
+            box-sizing: border-box;
+            margin-bottom: 16px;
+            resize: vertical;
+            background: #fafbfc;
+        "
+        placeholder="Date, Counterparty, Reference, Type, Amount, Status..."
+    ></textarea>
+
+    <div
+        id="paste-error"
+        style="
+            display: none;
+            background: var(--starling-error-bg);
+            color: var(--starling-error-text);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 20px;
+        "
+    ></div>
+
+    <button id="btn-parse" class="btn-primary" onclick="handleCsvPaste()" style="width: 100%; margin-bottom: 32px">
+        Load Transactions
+    </button>
+
+    <!-- ========================================== -->
+
+    <!-- TRANSACTION SELECTION TABLE -->
+
+    <!-- ========================================== -->
+
+    <div id="tx-selection-area" style="display: none; margin-top: 32px; animation: fadeIn 0.4s ease">
+        <h3 style="font-size: 18px; color: var(--starling-navy); margin-bottom: 16px">
+            Select Disputed Transaction(s)
+        </h3>
+
+        <!-- Upgraded Search & Filters -->
+
+        <div
+            style="
+                display: flex;
+                gap: 16px;
+                margin-bottom: 16px;
+                align-items: center;
+                background: #fff;
+                padding: 12px;
+                border: 1px solid var(--starling-border);
+                border-radius: 8px;
+            "
+        >
+            <div style="flex: 1; position: relative">
+                <span style="position: absolute; left: 12px; top: 10px; color: var(--starling-text-light)">🔍</span>
+
+                <input
+                    type="text"
+                    id="tx-search"
+                    placeholder="Search by merchant, amount, or date..."
+                    style="
+                        width: 100%;
+                        padding: 10px 10px 10px 36px;
+                        border: 1px solid var(--starling-border);
+                        border-radius: 6px;
+                        font-size: 14px;
+                        box-sizing: border-box;
+                    "
+                    oninput="debouncedSearch()"
+                />
+            </div>
+
+            <!-- Settled Toggle -->
+
+            <label
+                style="
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 14px;
+                    font-weight: 600;
+                    color: var(--starling-navy);
+                    cursor: pointer;
+                "
+            >
+                <input
+                    type="checkbox"
+                    id="settled-toggle"
+                    onchange="filterTransactions()"
+                    style="width: 18px; height: 18px; cursor: pointer"
+                />
+
+                Settled Only
+            </label>
+        </div>
+
+        <!-- The Data Table -->
+
+        <div style="border: 1px solid var(--starling-border); border-radius: 8px; overflow: hidden; background: #fff">
+            <div style="max-height: 400px; overflow-y: auto">
+                <table style="width: 100%; border-collapse: collapse; text-align: left; font-size: 13px">
+                    <thead style="background: var(--starling-sand); position: sticky; top: 0; z-index: 10">
+                        <tr>
+                            <th
+                                style="padding: 12px; border-bottom: 1px solid var(--starling-border); width: 40px"
+                            ></th>
+
+                            <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Date</th>
+
+                            <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Merchant</th>
+
+                            <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Type</th>
+
+                            <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Amount</th>
+
+                            <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Status</th>
+                        </tr>
+                    </thead>
+
+                    <tbody id="tx-table-body">
+                        <!-- Populated lightning fast by JS -->
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- Upgraded Action Bar -->
+
+            <div
+                style="
+                    background: var(--starling-bg);
+                    padding: 16px;
+                    border-top: 1px solid var(--starling-border);
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                "
+            >
+                <div
+                    id="selection-count"
+                    onclick="openSelectedModal()"
+                    style="
+                        font-weight: 600;
+                        color: var(--starling-primary);
+                        cursor: pointer;
+                        padding: 8px 12px;
+                        border-radius: 6px;
+                        transition: background 0.2s;
+                    "
+                >
+                    0 payment(s) selected
+                </div>
+
+                <button
+                    id="btn-proceed"
+                    class="btn-primary"
+                    style="padding: 12px 24px"
+                    disabled
+                    onclick="submitSelectedTxs()"
+                >
+                    Proceed with Selection →
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- ========================================== -->
+
+<!-- SELECTED TRANSACTIONS MODAL -->
+
+<!-- ========================================== -->
+
+<div
+    id="selected-modal"
+    style="
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background: rgba(0, 0, 0, 0.5);
+        z-index: 2000;
+        justify-content: center;
+        align-items: center;
+    "
+>
+    <div
+        style="
+            background: #fff;
+            width: 90%;
+            max-width: 700px;
+            border-radius: 12px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+            display: flex;
+            flex-direction: column;
+        "
+    >
+        <div
+            style="
+                padding: 16px 20px;
+                border-bottom: 1px solid var(--starling-border);
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                background: var(--starling-bg);
+            "
+        >
+            <h3 style="margin: 0; color: var(--starling-navy); font-size: 16px">Currently Selected Payments</h3>
+
+            <button
+                onclick="closeSelectedModal()"
+                style="
+                    background: none;
+                    border: none;
+                    font-size: 20px;
+                    cursor: pointer;
+                    color: var(--starling-text-light);
+                "
+            >
+                ×
+            </button>
+        </div>
+
+        <div style="padding: 0; overflow-y: auto; max-height: 400px; font-size: 13px">
+            <table style="width: 100%; border-collapse: collapse; text-align: left">
+                <thead style="background: var(--starling-sand); position: sticky; top: 0">
+                    <tr>
+                        <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Date</th>
+
+                        <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Merchant</th>
+
+                        <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Amount</th>
+
+                        <th style="padding: 12px; border-bottom: 1px solid var(--starling-border)">Action</th>
+                    </tr>
+                </thead>
+
+                <tbody id="selected-modal-body">
+                    <!-- Populated by JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <div
+            style="
+                padding: 16px;
+                border-top: 1px solid var(--starling-border);
+                display: flex;
+                justify-content: flex-end;
+            "
+        >
+            <button class="btn-primary" onclick="closeSelectedModal()">Done</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    function handleCsvPaste() {
+        const rawText = document.getElementById("paste-input").value.trim();
+
+        const errorDiv = document.getElementById("paste-error");
+
+        const btn = document.getElementById("btn-parse");
+
+        if (!rawText) {
+            errorDiv.innerText = "Please paste the CSV data first.";
+
+            errorDiv.style.display = "block";
+
+            return;
+        }
+
+        errorDiv.style.display = "none";
+
+        btn.innerText = "Loading...";
+
+        btn.disabled = true;
+
+        google.script.run
+
+            .withSuccessHandler(function (response) {
+                btn.innerText = "Load Transactions";
+
+                btn.disabled = false;
+
+                if (!response.success) {
+                    errorDiv.innerText = response.error;
+
+                    errorDiv.style.display = "block";
+
+                    return;
+                }
+
+                // Save full statement to state for later historical checks
+
+                appState.statementData = response.data;
+
+                renderTransactionTable(response.data);
+            })
+
+            .processStatementCsv(rawText);
+    }
+
+    function renderTransactionTable(transactions) {
+        const tbody = document.getElementById("tx-table-body");
+
+        tbody.innerHTML = "";
+
+        if (transactions.length === 0) {
+            tbody.innerHTML =
+                '<tr><td colspan="5" style="padding: 16px; text-align: center; color: var(--starling-text-light);">No outbound debits found in this statement.</td></tr>';
+        } else {
+            transactions.forEach((tx, index) => {
+                const tr = document.createElement("tr");
+
+                tr.style.borderBottom = "1px solid var(--starling-border)";
+
+                tr.innerHTML = `
+
+<td style="padding: 12px;">${tx.dateTime.split(" ")[0]}</td>
+
+<td style="padding: 12px; font-weight: 600; color: var(--starling-navy);">${tx.counterparty}</td>
+
+<td style="padding: 12px;">${tx.transactionType}</td>
+
+<td style="padding: 12px;">£${tx.amount}</td>
+
+<td style="padding: 12px;">
+
+<button class="btn-secondary" style="padding: 6px 12px; font-size: 13px;" onclick="selectDisputedTx(${index})">Select</button>
+
+</td>
+
+`;
+
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById("tx-selection-area").style.display = "block";
+    }
+
+    function selectDisputedTx(index) {
+        const selectedTx = appState.statementData[index];
+
+        appState.parsedData = selectedTx; // Set the active transaction for the rest of the app
+
+        // --- SMART HISTORY CHECK ---
+
+        // Look through the full statement for previous payments to this exact merchant
+
+        const previousPayments = appState.statementData.filter(
+            (tx) =>
+                tx.counterparty.toLowerCase() === selectedTx.counterparty.toLowerCase() &&
+                tx.rawTimeMs < selectedTx.rawTimeMs // Only payments BEFORE the disputed one
+        );
+
+        appState.flags.merchantHistoryCount = previousPayments.length;
+
+        if (previousPayments.length > 0) {
+            appState.flags.lastUsedDate = previousPayments[0].dateTime.split(" ")[0]; // Most recent previous
+        }
+
+        // --- ROUTING LOGIC ---
+
+        if (selectedTx.paymentGroup === "CARD") {
+            const typeUpper = (selectedTx.transactionType || "").toUpperCase();
+
+            const isPoS =
+                typeUpper.includes("CHIP") ||
+                typeUpper.includes("CONTACTLESS") ||
+                typeUpper.includes("ATM") ||
+                typeUpper.includes("MAGSTRIPE");
+
+            if (isPoS) {
+                navigateToView("view-pos-check");
+            } else {
+                navigateToView("view-step1");
+            }
+        } else {
+            navigateToView("view-holding");
+        }
+    }
+</script>
