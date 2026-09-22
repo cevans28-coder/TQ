@@ -1,0 +1,62 @@
+<div id="view-wallet-check" class="view-section">
+  <h2 style="margin-bottom: 8px;">Mobile Wallet Diagnostics</h2>
+  <p style="color: var(--starling-text-light); margin-bottom: 24px;">This is a Mobile Wallet payment (Apple/Google Pay). We need to determine the device status before checking merchant history.</p>
+
+  <div style="background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+    <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Is the customer claiming the device was LOST or STOLEN prior to this payment?</h3>
+    
+    <div style="display: flex; gap: 12px;">
+      <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('wallet-lost-flow').style.display='block'; document.getElementById('wallet-proceed-btn').style.display='none';">Yes, device is lost/stolen</button>
+      <button class="btn-primary" style="flex: 1;" onclick="navigateToView('view-step1')">No, device is in possession →</button>
+    </div>
+  </div>
+
+  <!-- LOST DEVICE FLOW -->
+  <div id="wallet-lost-flow" style="display: none; animation: fadeIn 0.3s ease;">
+    <div style="background: var(--starling-bg); border-left: 4px solid var(--starling-primary); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+      <h4 style="font-size: 15px; color: var(--starling-navy); margin: 0 0 12px 0;">Agent Action: Check Devices on Profile</h4>
+      <p style="font-size: 14px; color: var(--starling-text); margin: 0 0 12px 0;">Look at the customer's MP profile. Is the "lost" device the <strong>ONLY</strong> device registered to their account?</p>
+      
+      <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+        <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('wallet-sole-chat-check').style.display='block'; document.getElementById('wallet-not-sole').style.display='none';">Yes (Sole Device)</button>
+        <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('wallet-not-sole').style.display='block'; document.getElementById('wallet-sole-chat-check').style.display='none';">No (Multiple Devices)</button>
+      </div>
+
+      <!-- Multiple Devices (Safe to proceed) -->
+      <div id="wallet-not-sole" style="display: none; padding-top: 12px; border-top: 1px solid var(--starling-border);">
+        <p style="font-size: 14px; color: var(--starling-success-text); font-weight: 600; margin-bottom: 12px;">✓ Multiple devices detected. Customer could be chatting from a secondary device.</p>
+        <button class="btn-primary" style="width: 100%;" onclick="navigateToView('view-step1')">Proceed to Merchant History (Step 1) →</button>
+      </div>
+
+      <!-- Sole Device (Check Chat Status) -->
+      <div id="wallet-sole-chat-check" style="display: none; padding-top: 12px; border-top: 1px solid var(--starling-border);">
+        <p style="font-size: 14px; color: var(--starling-text); margin: 0 0 12px 0;"><strong>Is the customer currently on an in-app chat, OR do they still have active app access?</strong></p>
+        
+        <div style="display: flex; gap: 12px; flex-direction: column;">
+          <button class="btn-secondary" style="text-align: left; border-color: var(--starling-warning-text);" onclick="document.getElementById('wallet-caught-script').style.display='block'">
+            <strong>Yes (Active App/Chat)</strong><br>
+            <span style="font-size: 13px; font-weight: 400; color: var(--starling-text-light);">Customer is physically using the "lost" device.</span>
+          </button>
+          <button class="btn-primary" style="text-align: left;" onclick="navigateToView('view-step1')">
+            <strong>No (No App Access)</strong><br>
+            <span style="font-size: 13px; font-weight: 400; opacity: 0.9;">Proceed to Merchant History (Step 1) →</span>
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- CAUGHT RED HANDED SCRIPT -->
+    <div id="wallet-caught-script" style="display: none; background: var(--starling-error-bg); border: 1px solid var(--starling-error-text); padding: 16px; border-radius: 8px; margin-bottom: 24px;">
+      <h4 style="color: var(--starling-error-text); margin: 0 0 8px 0; font-size: 15px;">🛑 Process End (Cannot Raise Fraud)</h4>
+      <p style="font-size: 14px; color: var(--starling-text); margin-bottom: 12px;">Read or copy this polite pushback to the customer. Once informed, end the fraud process.</p>
+      
+      <div style="background: #fff; border-left: 4px solid var(--starling-error-text); padding: 12px; font-style: italic; font-size: 14px; color: var(--starling-text); margin-bottom: 12px;">
+        "I understand you are reporting the device as lost. However, because you are currently accessing your app from the only registered device on your profile, we are unable to process this as a lost device fraud claim."
+      </div>
+      
+      <button class="btn-secondary" style="width: 100%; border-color: var(--starling-error-text); color: var(--starling-error-text);" onclick="appState.flags.outcome = 'retail'; navigateToView('view-outcomes')">End Process (Route to Retail/Close)</button>
+    </div>
+  </div>
+
+  <button id="wallet-proceed-btn" class="btn-primary" style="width: 100%; padding: 16px; font-size: 15px; display: none;" onclick="navigateToView('view-step1')">Proceed to Merchant History →</button>
+</div>
