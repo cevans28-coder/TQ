@@ -1,0 +1,101 @@
+<div id="view-step2" class="view-section">
+  <h2 style="margin-bottom: 8px;">Step 2: Investigation & Authorisation</h2>
+  <p style="color: var(--starling-text-light); margin-bottom: 24px;">Investigate the merchant details and check authorisation methods.</p>
+
+  <!-- Smart Investigation Tools (ALWAYS VISIBLE) -->
+  <div style="background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 20px; margin-bottom: 24px;">
+    <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 16px;">Investigation Tools</h3>
+    
+    <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+      <button class="btn-secondary" style="flex: 1; min-width: 200px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="executeGoogleSearch()">
+        🔍 Google the Merchant
+      </button>
+      <button class="btn-secondary" style="flex: 1; min-width: 200px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openMacroModal()">
+        📚 Open Scripts & Macros
+      </button>
+    </div>
+
+    <hr style="border: none; border-top: 1px solid var(--starling-border); margin: 20px 0;">
+
+    <h4 style="font-size: 14px; color: var(--starling-navy); margin: 0 0 12px 0;">MP Diagnostic Checklist:</h4>
+    <ul style="list-style-type: none; padding-left: 0; margin: 0; line-height: 1.6; color: var(--starling-text); font-size: 14px;">
+      <li style="margin-bottom: 8px; display: flex; align-items: center; gap: 8px;">
+        <input type="checkbox"> <strong>Feed Tab:</strong> Found the MCC Code and checked reference. 
+        <button class="btn-secondary" style="padding: 4px 10px; font-size: 12px;" onclick="openMccModal()">Lookup Common MCCs</button>
+      </li>
+    </ul>
+  </div>
+
+  <!-- ========================================== -->
+  <!-- PATH A: ONLINE PAYMENTS (3DS CHECK)        -->
+  <!-- ========================================== -->
+  <div id="online-routing-section" style="display: none;">
+    <div style="background: var(--starling-bg); border-left: 4px solid var(--starling-primary); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+      <h3 style="font-size: 16px; color: var(--starling-navy); margin-top: 0; margin-bottom: 12px;">Online Authorisation Check (Check MP)</h3>
+      <p style="font-size: 14px; color: var(--starling-text); margin: 0 0 12px 0;">Open the <strong>Cards</strong> screen in MP and check the Authorisation information for this payment.</p>
+      
+      <div id="auth-history-warning" style="display: none; padding: 12px; background: var(--starling-warning-bg); border: 1px solid var(--starling-warning-text); border-radius: 8px; color: var(--starling-warning-text); font-size: 13px; font-weight: 600;">
+        ⚠️ Customer has previous payments to this merchant. Please also check the authorisation method used on those historical payments.
+      </div>
+    </div>
+
+    <h3 style="font-size: 18px; color: var(--starling-navy); margin-bottom: 16px;">Was the payment 3DS Verified by the customer's device?</h3>
+    <div style="display: flex; flex-direction: column; gap: 12px;">
+      <button class="btn-secondary" style="text-align: left; padding: 16px; font-size: 15px; border-color: var(--starling-error-text); color: var(--starling-error-text);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">
+        <strong>❌ No (Bypassed / Not Requested)</strong><br>
+        <span style="font-size: 13px; font-weight: 400;">Raise Card Fraud claim immediately.</span>
+      </button>
+
+      <div style="background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+        <strong style="font-size: 15px; color: var(--starling-navy);">✅ Yes (Device Verified)</strong>
+        <p style="font-size: 14px; color: var(--starling-text); margin: 8px 0 16px 0;">Inform the customer that the payment was approved by their device. If they are still certain it wasn't them, proceed to check the ACS JSON data.</p>
+        <button class="btn-primary" style="width: 100%;" onclick="navigateToView('view-step3')">Proceed to ACS Verification (Step 3) →</button>
+      </div>
+    </div>
+  </div>
+
+<!-- ========================================== -->
+  <!-- PATH B: MOBILE WALLET PAYMENTS             -->
+  <!-- ========================================== -->
+  <div id="wallet-routing-section" style="display: none;">
+    <h3 style="font-size: 18px; color: var(--starling-navy); margin-bottom: 16px;">Mobile Wallet Auth Check</h3>
+    
+    <!-- Dynamic Subtitle telling the agent what the system found -->
+    <p id="wallet-auto-subtitle" style="font-size: 14px; font-weight: 600; color: var(--starling-primary); margin-bottom: 16px;"></p>
+    
+    <!-- Toggle Buttons (Hidden automatically if the system detects the type) -->
+    <div id="wallet-manual-toggles" style="display: flex; gap: 12px; margin-bottom: 24px;">
+      <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('wallet-pos-flow').style.display='block'; document.getElementById('wallet-online-flow').style.display='none';">🏢 In Person (POS)</button>
+      <button class="btn-secondary" style="flex: 1;" onclick="document.getElementById('wallet-online-flow').style.display='block'; document.getElementById('wallet-pos-flow').style.display='none';">🌐 Online Payment</button>
+    </div>
+
+    <!-- WALLET: IN PERSON FLOW -->
+    <div id="wallet-pos-flow" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 16px;">
+      <h4 style="font-size: 15px; color: var(--starling-navy); margin: 0 0 12px 0;">Is this the sole device on the customer's profile?</h4>
+      <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+        <button class="btn-secondary" style="flex: 1; border-color: var(--starling-error-text); color: var(--starling-error-text);" onclick="document.getElementById('wallet-pos-reject').style.display='block'">Yes (Sole Device)</button>
+        <button class="btn-primary" style="flex: 1; background: var(--starling-navy);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">No (Multiple) -> Raise Fraud</button>
+      </div>
+
+      <div id="wallet-pos-reject" style="display: none; background: var(--starling-error-bg); border-left: 4px solid var(--starling-error-text); padding: 12px;">
+        <p style="font-size: 14px; margin: 0 0 8px 0; color: var(--starling-text);"><strong>Process End:</strong> Read this to the customer and route to retail/close.</p>
+        <p style="font-size: 14px; margin: 0; font-style: italic; color: var(--starling-text);">"This payment was made in person using your digital wallet, which requires your physical device and your personal biometrics (like Face ID or your fingerprint). Because this is the only device registered to you, we cannot raise a fraud claim for this transaction."</p>
+      </div>
+    </div>
+
+    <!-- WALLET: ONLINE FLOW -->
+    <div id="wallet-online-flow" style="display: none; background: #fff; border: 1px solid var(--starling-border); border-radius: 12px; padding: 16px;">
+      <h4 style="font-size: 15px; color: var(--starling-navy); margin: 0 0 12px 0;">Pushback Script Required</h4>
+      <p style="font-size: 14px; margin: 0 0 12px 0; color: var(--starling-text);">Please explain the security behind the payment using this script:</p>
+      
+      <div style="background: var(--starling-bg); padding: 12px; border-radius: 8px; font-style: italic; font-size: 14px; color: var(--starling-text); border-left: 4px solid var(--starling-primary); margin-bottom: 16px;">
+        "This payment was completed using your digital wallet. This is a highly secure method that requires your biometric approval (Face ID or Fingerprint) or device passcode to authorise. Could someone else with access to your device have made this purchase?"
+      </div>
+
+      <h4 style="font-size: 14px; color: var(--starling-navy); margin: 0 0 8px 0;">Is the payment still unrecognised?</h4>
+      <div style="display: flex; gap: 12px;">
+        <button class="btn-primary" style="flex: 1; background: var(--starling-navy);" onclick="appState.flags.outcome = 'fraud'; navigateToView('view-outcomes')">Yes -> Raise Fraud</button>
+        <button class="btn-secondary" style="flex: 1;" onclick="appState.flags.outcome = 'retail'; navigateToView('view-outcomes')">No -> End Process</button>
+      </div>
+    </div>
+  </div>
