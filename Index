@@ -1,0 +1,313 @@
+<!doctype html>
+
+<html>
+    <head>
+        <?!= include('Styles'); ?> <?!= include('Data_Macros'); ?>
+        <!-- Loads the scripts database -->
+    </head>
+
+    <body>
+        <!-- Persistent Header -->
+
+        <header class="app-header" style="flex-direction: column; align-items: stretch; padding: 0">
+            <!-- Main Nav Row -->
+
+            <div style="display: flex; justify-content: space-between; align-items: center; padding: 16px 24px">
+                <h1>Transaction Query</h1>
+
+                <div class="nav-controls">
+                    <button id="btn-back" class="btn-secondary" onclick="goBack()" style="display: none">← Back</button>
+
+                    <select id="skip-dropdown" class="nav-select" onchange="handleSkip(this)">
+                        <option value="view-paste">1. Paste Transaction</option>
+
+                        <option value="view-holding">X. Unsupported (Holding)</option>
+
+                        <option value="view-pos-check">2a. Auth Warning</option>
+
+                        <option value="view-step1">2b. Triage & Memory</option>
+
+                        <option value="view-step2">3. Merchant & PoS Investigation</option>
+
+                        <option value="view-step3">4. 3DS & ACS Verification</option>
+
+                        <option value="view-outcomes">5. Handoffs & Outcomes</option>
+                    </select>
+
+                    <button
+                        class="btn-secondary"
+                        onclick="resetApp()"
+                        style="color: var(--starling-error-text); border-color: var(--starling-error-bg)"
+                    >
+                        Escape / Reset
+                    </button>
+                </div>
+            </div>
+
+            <!-- ACTIVE TRANSACTION BANNER -->
+
+            <div
+                id="active-tx-banner"
+                style="
+                    display: none;
+                    background: var(--starling-primary-light);
+                    padding: 8px 24px;
+                    border-top: 1px solid var(--starling-border);
+                    justify-content: space-between;
+                    align-items: center;
+                    font-size: 14px;
+                    color: var(--starling-navy);
+                "
+            >
+                <div>
+                    <span style="margin-right: 8px">💳</span>
+
+                    <strong id="banner-amount"></strong> to <strong id="banner-merchant"></strong>
+                </div>
+
+                <div style="color: var(--starling-text-light); font-size: 13px">
+                    <span id="banner-date"></span> &nbsp;|&nbsp;
+                    <span id="banner-type" style="font-family: monospace"></span>
+                </div>
+            </div>
+        </header>
+
+        <!-- Main App Container -->
+
+        <div class="container" id="app-root">
+            <?!= include('View_Paste'); ?>
+            <?!= include('View_Holding'); ?>
+            <?!= include('View_WalletCheck'); ?>
+            <?!= include('View_ContactlessCheck'); ?>
+            <?!= include('View_OtherCPCheck'); ?> 
+            <?!= include('View_PoSCheck'); ?>
+            <?!= include('View_Step1'); ?> 
+            <?!= include('View_Step2'); ?> 
+            <?!= include('View_Step3'); ?> 
+            <?!= include('View_Outcomes'); ?>
+        </div>
+
+        <!-- Scripting & Macros Modal -->
+
+        <div
+            id="macro-modal"
+            style="
+                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: rgba(0, 0, 0, 0.5);
+                z-index: 2000;
+                justify-content: center;
+                align-items: center;
+            "
+        >
+            <div
+                style="
+                    background: #fff;
+                    width: 90%;
+                    max-width: 800px;
+                    height: 80vh;
+                    border-radius: 12px;
+                    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.2);
+                    display: flex;
+                    flex-direction: column;
+                    overflow: hidden;
+                "
+            >
+                <div
+                    style="
+                        padding: 16px 20px;
+                        border-bottom: 1px solid var(--starling-border);
+                        display: flex;
+                        justify-content: space-between;
+                        align-items: center;
+                        background: var(--starling-bg);
+                    "
+                >
+                    <h3 style="margin: 0; color: var(--starling-navy); font-size: 16px">Agent Scripting & Macros</h3>
+
+                    <button
+                        onclick="closeMacroModal()"
+                        style="
+                            background: none;
+                            border: none;
+                            font-size: 20px;
+                            cursor: pointer;
+                            color: var(--starling-text-light);
+                        "
+                    >
+                        ×
+                    </button>
+                </div>
+
+                <div style="display: flex; flex: 1; overflow: hidden">
+                    <!-- Left Sidebar: Selection List -->
+
+                    <div
+                        style="
+                            width: 300px;
+                            border-right: 1px solid var(--starling-border);
+                            display: flex;
+                            flex-direction: column;
+                            background: #fafbfc;
+                        "
+                    >
+                        <div style="padding: 12px; border-bottom: 1px solid var(--starling-border)">
+                            <input
+                                type="text"
+                                id="macro-search"
+                                placeholder="Search merchant..."
+                                style="
+                                    width: 100%;
+                                    padding: 8px;
+                                    border: 1px solid var(--starling-border);
+                                    border-radius: 6px;
+                                    box-sizing: border-box;
+                                "
+                                onkeyup="filterMacros()"
+                            />
+                        </div>
+
+                        <div
+                            id="macro-list-container"
+                            style="flex: 1; overflow-y: auto; padding: 12px; font-size: 14px"
+                        >
+                            <!-- Populated by JS -->
+                        </div>
+                    </div>
+
+                    <!-- Right Content Area: Script Display -->
+
+                    <div
+                        style="
+                            flex: 1;
+                            padding: 24px;
+                            overflow-y: auto;
+                            display: flex;
+                            flex-direction: column;
+                            gap: 16px;
+                        "
+                    >
+                        <div
+                            id="macro-placeholder"
+                            style="color: var(--starling-text-light); text-align: center; margin-top: 40px"
+                        >
+                            Select a merchant or scenario from the left to view the script.
+                        </div>
+
+                        <div id="macro-content" style="display: none; flex-direction: column; gap: 16px">
+                            <div>
+                                <h4
+                                    id="macro-title"
+                                    style="margin: 0 0 8px 0; color: var(--starling-navy); font-size: 18px"
+                                ></h4>
+
+                                <div style="font-size: 13px; color: var(--starling-text-light)">
+                                    Contact Info:
+                                    <a
+                                        id="macro-contact"
+                                        href="#"
+                                        target="_blank"
+                                        style="color: var(--starling-primary)"
+                                    ></a>
+                                </div>
+                            </div>
+
+                            <div style="position: relative">
+                                <textarea
+                                    id="macro-text-area"
+                                    readonly
+                                    style="
+                                        width: 100%;
+                                        height: 250px;
+                                        padding: 16px;
+                                        border: 1px solid var(--starling-border);
+                                        border-radius: 8px;
+                                        font-family: inherit;
+                                        font-size: 14px;
+                                        line-height: 1.5;
+                                        color: var(--starling-text);
+                                        resize: none;
+                                        background: #fff;
+                                    "
+                                ></textarea>
+                            </div>
+
+                            <button
+                                class="btn-primary"
+                                onclick="copyActiveMacro()"
+                                style="align-self: flex-start; padding: 10px 20px"
+                            >
+                                📋 Copy Wording
+                            </button>
+
+                            <div
+                                id="macro-copy-feedback"
+                                style="
+                                    display: none;
+                                    color: var(--starling-success-text);
+                                    font-size: 13px;
+                                    font-weight: 600;
+                                "
+                            >
+                                ✅ Copied to clipboard!
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- ========================================== -->
+<!-- MCC LOOKUP MODAL                           -->
+<!-- ========================================== -->
+<div id="mcc-modal" style="display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 2000; justify-content: center; align-items: center;">
+  <div style="background: #fff; width: 90%; max-width: 600px; max-height: 80vh; border-radius: 12px; box-shadow: 0 10px 30px rgba(0,0,0,0.2); display: flex; flex-direction: column; overflow: hidden;">
+    
+    <!-- Header -->
+    <div style="padding: 16px 20px; border-bottom: 1px solid var(--starling-border); display: flex; justify-content: space-between; align-items: center; background: var(--starling-bg);">
+      <h3 style="margin: 0; color: var(--starling-navy); font-size: 16px;">MCC Lookup Tool</h3>
+      <button onclick="closeMccModal()" style="background: none; border: none; font-size: 20px; cursor: pointer; color: var(--starling-text-light);">×</button>
+    </div>
+    
+    <!-- Search Bar -->
+    <div style="padding: 16px; border-bottom: 1px solid var(--starling-border);">
+      <input type="text" id="mcc-search" placeholder="Search by code (e.g. 5411) or name (e.g. Grocery)..." style="width: 100%; padding: 12px; border: 1px solid var(--starling-border); border-radius: 8px; font-size: 14px; box-sizing: border-box;" onkeyup="searchMcc()">
+    </div>
+    
+    <!-- Content Area -->
+    <div style="padding: 16px; overflow-y: auto; flex: 1;">
+      
+      <!-- Default/Common View -->
+      <div id="mcc-common-view">
+        <p style="font-size: 14px; color: var(--starling-text-light); margin-top: 0; margin-bottom: 16px;">Common MCCs to look out for:</p>
+        <ul style="list-style: none; padding: 0; margin: 0; font-size: 14px;">
+          <li style="padding: 10px; border-bottom: 1px solid var(--starling-border);"><strong style="color: var(--starling-navy);">4829 / 6012 / 6051</strong>: Financial Institutions / Money Transfer (Crypto, Trading, Wallets)</li>
+          <li style="padding: 10px; border-bottom: 1px solid var(--starling-border);"><strong style="color: var(--starling-navy);">5411</strong>: Grocery Stores / Supermarkets</li>
+          <li style="padding: 10px; border-bottom: 1px solid var(--starling-border);"><strong style="color: var(--starling-navy);">5812 / 5814</strong>: Restaurants and Fast Food</li>
+          <li style="padding: 10px; border-bottom: 1px solid var(--starling-border);"><strong style="color: var(--starling-navy);">5968</strong>: Direct Marketing / Subscription Services (High risk of subscription traps)</li>
+          <li style="padding: 10px; border-bottom: 1px solid var(--starling-border);"><strong style="color: var(--starling-navy);">7995</strong>: Betting, Casino, and Lottery</li>
+          <li style="padding: 10px; border-bottom: 1px solid var(--starling-border);"><strong style="color: var(--starling-navy);">8999</strong>: Professional Services (Commonly used by OnlyFans and similar platforms)</li>
+        </ul>
+      </div>
+      
+      <!-- Search Results View -->
+      <div id="mcc-search-results" style="display: none;">
+        <ul id="mcc-results-list" style="list-style: none; padding: 0; margin: 0; font-size: 14px;">
+          <!-- Populated by JS -->
+        </ul>
+        <div id="mcc-no-results" style="display: none; text-align: center; color: var(--starling-text-light); padding: 24px 0;">
+          No matching MCCs found.
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+        <?!= include('Script'); ?>
+    </body>
+</html>
