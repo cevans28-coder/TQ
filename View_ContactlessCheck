@@ -82,16 +82,19 @@
       <span>👁️ View History</span>
     </div>
 
-    <!-- General Tools -->
+   <!-- General Tools -->
     <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
       <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="executeGoogleSearch()">
-        🔍 Google Search
+          🔍 Google Search
       </button>
       <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openMacroModal()">
-        📚 Scripts & Macros
+          📚 Scripts & Macros
       </button>
       <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openMccModal()">
-        🏢 Lookup MCC
+          🏪 Lookup MCC
+      </button>
+      <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openManualSearchModal()">
+          🔎 Search Statement
       </button>
     </div>
 
