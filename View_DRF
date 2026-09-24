@@ -1,0 +1,231 @@
+<div id="view-drf" class="view-section">
+  <style>
+    #view-drf { color: var(--starling-text); }
+    #view-drf .drf-label { font-weight: 600; display: block; margin-top: 16px; font-size: 14px; color: var(--starling-navy); }
+    #view-drf .help-text { font-size: 13px; color: var(--starling-text-light); margin-top: 4px; display: block; margin-bottom: 8px; }
+    #view-drf input[type="text"], #view-drf input[type="date"], #view-drf select, #view-drf textarea { 
+      width: 100%; padding: 10px 12px; margin-top: 4px; border: 1px solid var(--starling-border);
+      border-radius: 6px; box-sizing: border-box; font-size: 14px; transition: border-color 0.2s; font-family: inherit;
+    }
+    #view-drf input:focus, #view-drf select:focus, #view-drf textarea:focus { outline: none; border-color: var(--starling-teal); }
+    #view-drf textarea { font-family: monospace; font-size: 13px; }
+    #view-drf .checkbox-row { display: flex; align-items: flex-start; margin-bottom: 8px; }
+    #view-drf .checkbox-row input[type="checkbox"] { width: auto; margin-right: 10px; margin-top: 3px; }
+    #view-drf .checkbox-row label { margin-top: 0; font-weight: normal; font-size: 14px; }
+    
+    #view-drf .drf-btn { margin-top: 8px; padding: 12px 24px; background: var(--starling-teal); color: white; border: none; border-radius: 6px; font-weight: 600; font-size: 15px; cursor: pointer; transition: all 0.2s ease; width: 100%; }
+    #view-drf .drf-btn:hover:not(:disabled) { background: var(--starling-teal-hover); }
+    #view-drf .drf-btn:disabled { background: #A5ADBA; cursor: not-allowed; }
+    
+    #view-drf .drf-secondary-btn { background: var(--starling-navy); color: white; width: auto; padding: 8px 16px; font-size: 13px; margin-top: 12px; display: inline-block; border: none; border-radius: 6px; cursor: pointer; }
+    #view-drf .drf-secondary-btn:hover { background: #1a2539; }
+    #view-drf .remove-btn { background: var(--starling-error-text); margin-left: 10px; }
+    
+    #view-drf .alert-box { display: none; margin-top: 12px; padding: 12px 15px; border-radius: 6px; font-size: 13px; line-height: 1.4; }
+    #view-drf .alert-error { background: var(--starling-error-bg); border-left: 4px solid var(--starling-error-text); color: var(--starling-error-text); font-weight: bold; }
+    #view-drf .alert-warning { background: var(--starling-warning-bg); border-left: 4px solid var(--starling-warning-text); color: var(--starling-warning-text); }
+    #view-drf .alert-info { background: var(--starling-primary-light); border-left: 4px solid var(--starling-primary); color: var(--starling-primary); }
+    #view-drf .tx-group { margin-bottom: 15px; padding: 15px; border: 1px solid var(--starling-border); border-radius: 6px; background: #fff; }
+  </style>
+
+  <h2 style="margin-bottom: 8px;">Dispute Summary Generator</h2>
+  <p style="color: var(--starling-text-light); margin-bottom: 24px;">The transactions you investigated have been securely imported.</p>
+  
+  <label class="drf-label" style="margin-top:0;">Cardholder Participation</label>
+  <span class="help-text"><strong>Note:</strong> Select 'Yes' if the customer has previously engaged with the merchant, even if they are unaware of the most recent subscription charge.</span>
+  <select id="cardholderParticipation" name="cardholderParticipation" onchange="checkFraudState()">
+    <option value="">-- Select --</option>
+    <option value="Yes">Yes (Retail Dispute)</option>
+    <option value="No">No (Fraud Dispute)</option>
+  </select>
+  
+  <div id="fraudWarning" class="alert-box alert-error">⚠️ If the customer did not participate in the transaction, this is a fraud claim. Please STOP and use the Fraud macro.</div>
+
+  <div id="globalDuplicateWarning" class="alert-box alert-error">🛑 Duplicate transactions detected. Please remove the duplicate to proceed.</div>
+  
+  <div id="global120DayError" class="alert-box alert-error" style="justify-content: space-between; align-items: center;">
+    <div>🛑 <strong>Timeframe Error:</strong> A disputed transaction is over 120 days old.</div>
+    <button type="button" class="drf-secondary-btn" style="margin: 0; padding: 6px 12px; background: #fff; color: var(--starling-error-text); border: 1px solid var(--starling-error-text);" onclick="showOverruleModal()">Overrule</button>
+  </div>
+  
+  <div id="global120DayOverruled" class="alert-box alert-warning">⚠️ <strong>Timeframe Error Overruled:</strong> Proceeding under extended limits.</div>
+
+  <div id="mainFormWrapper" style="display:none;">
+      <label class="drf-label">Select Dispute Type:</label>
+      <select id="disputeType" name="disputeType" onchange="toggleSections()">
+        <option value="">-- Select dispute type --</option>
+        <option value="GNR">Goods or Services Not Received (GNR)</option>
+        <option value="CPA">Subscriptions (CPA)</option>
+      </select>
+
+      <form id="disputeForm" novalidate onsubmit="event.preventDefault(); triggerPreview();">
+        <!-- GNR SECTION -->
+        <div id="gnrSection" style="display:none; margin-top:20px;">
+          <label class="drf-label" style="margin-top:0;">Purchase Type <span style="color:red;">*</span></label>
+          <select name="gnrPurchaseType" id="gnrPurchaseType" onchange="triggerValidation()" required>
+            <option value="Goods">Goods</option>
+            <option value="Services">Services</option>
+          </select>
+
+          <div id="gnrDisputedContainer" style="margin-top: 15px;"></div>
+          <button type="button" class="drf-secondary-btn" onclick="addGnrTransaction()">+ Add Another Payment</button>
+          
+          <div id="gnrMerchantBlock" class="alert-box alert-error"></div>
+          <div id="gnrStatusError" class="alert-box alert-error">Transaction status must be SETTLED to raise a chargeback.</div>
+
+          <label class="drf-label">What were you purchasing? (Quantity & Description) <span style="color:red;">*</span></label>
+          <input type="text" name="gnrPurchasedItems" placeholder="e.g. 1 Ray Ban Meta Gen 2 Wayfarer" oninput="triggerValidation()" required>
+          
+          <label class="drf-label">Tracking Status / Delivery</label>
+          <select name="gnrTrackingStatus" id="gnrTrackingStatus" onchange="triggerValidation()">
+            <option value="Not Delivered">Not delivered / Expected date passed</option>
+            <option value="Delivered">Tracking shows delivered (Goods only)</option>
+          </select>
+
+          <label class="drf-label">Expected Delivery / Service Date</label>
+          <div class="checkbox-row" style="margin-top: 4px; margin-bottom: 8px;">
+            <input type="checkbox" id="gnrExpectedDateNA" onchange="toggleExpectedDate()">
+            <label for="gnrExpectedDateNA">Not Applicable (e.g. online services accessed immediately)</label>
+          </div>
+          <input type="date" name="gnrExpectedDate" id="gnrExpectedDate" onchange="triggerValidation()">
+          <div id="gnrFutureDateError" class="alert-box alert-error" style="margin-bottom:10px;">🛑 Date Error: The expected date is in the future.</div>
+
+          <label class="drf-label">When did the customer contact the merchant? <span style="color:red;">*</span></label>
+          <input type="date" name="gnrContactDate" onchange="triggerValidation()" required>
+
+          <label class="drf-label">What did the merchant say? <span style="color:red;">*</span></label>
+          <span class="help-text">Complete the sentence: "The cardholder contacted the merchant on [Date], but..."</span>
+          <input type="text" name="gnrMerchantResponse" placeholder="e.g. has not received a replacement or a refund" oninput="triggerValidation()" required>
+        </div>
+
+        <!-- CPA SECTION -->
+        <div id="cpaSection" style="display:none; margin-top:20px;">
+          <div class="alert-box alert-warning" style="display:block; margin-top: 0; margin-bottom: 15px;">🛑 <strong>Action Required:</strong> Ensure the active subscription is cancelled.</div>
+
+          <label class="drf-label" style="margin-top:0;">Subscription Issue</label>
+          <select name="cpaIssue" id="cpaIssue" onchange="toggleCpaFields()">
+            <option value="Unaware">Unaware of Subscription</option>
+            <option value="Previously Cancelled">Previously Cancelled</option>
+          </select>
+          
+          <div id="cpaDateOrderError" class="alert-box alert-error">🛑 Date Error: Initial transaction cannot be after disputed transaction.</div>
+          <div id="cpaCancelDateError" class="alert-box alert-error">🛑 Date Error: Cancellation date must be before disputed transaction.</div>
+
+          <div id="cpaUnawareFields" style="display:none;">
+              <div class="checkbox-row" style="margin-top: 12px; background: #fff; padding: 10px; border-radius: 6px; border: 1px solid var(--starling-border);">
+                <input type="checkbox" id="cpaNoInitialTx" name="cpaNoInitialTx" onchange="toggleCpaInitial()">
+                <label for="cpaNoInitialTx" style="margin-top:0;">No initial payment (e.g. Active Card Check only)</label>
+              </div>
+              
+              <label class="drf-label" style="margin-top:12px;">Paste the INITIAL (First) Transaction: <span style="color:red;" id="cpaInitAsterisk">*</span></label>
+              <textarea id="cpaInitialTxInput" name="cpaInitialTx" rows="4" oninput="validateTransactionInput(this, 'CPA_INITIAL'); triggerValidation();" required></textarea>
+              
+              <div id="cpaMerchantBlock" class="alert-box alert-error"></div>
+              <div id="cpaStatusError" class="alert-box alert-error">Transaction status must be SETTLED to raise a chargeback.</div>
+
+              <div id="unawareDisputedContainer" style="margin-top: 15px;"></div>
+              <button type="button" class="drf-secondary-btn" onclick="addUnawareTransaction()">+ Add Another Payment</button>
+          </div>
+
+          <div id="cpaCancelledFields" style="display:none;">
+              <label class="drf-label" style="margin-top:12px;">Date the subscription was cancelled: <span style="color:red;">*</span></label>
+              <input type="date" name="cpaCancelDate" id="cpaCancelDate" onchange="triggerValidation()" required>
+
+              <div id="cancelledDisputedContainer" style="margin-top: 15px;"></div>
+              <button type="button" class="drf-secondary-btn" onclick="addCancelledTransaction()">+ Add Another Payment</button>
+          </div>
+        </div>
+        
+        <div id="globalArnError" class="alert-box alert-error">Please ensure all ARNs are exactly 23 digits.</div>
+        <div id="btnStateHelper" style="color: var(--starling-error-text); font-size: 13px; font-weight: bold; margin-top: 24px; display: none;"></div>
+        
+        <div style="display: flex; gap: 15px; margin-top: 24px;">
+          <button type="submit" id="previewBtn" class="drf-btn" disabled style="margin-top: 0;">Preview Summary</button>
+          <button type="button" class="drf-secondary-btn" onclick="confirmClearForm()" style="margin-top: 0; padding: 12px 24px; background: transparent; color: var(--starling-navy); border: 1px solid var(--starling-border);">Reset Form</button>
+        </div>
+      </form>
+  </div>
+
+  <!-- PREVIEW STAGE -->
+  <div id="resultArea" style="display:none; margin-top: 30px; padding-top: 20px; border-top: 1px solid var(--starling-border);">
+    <h3 style="color: var(--starling-navy); margin-bottom: 8px;">Step 2: Preview & Edit</h3>
+    <span class="help-text">Review the summary below. You can edit the text directly before generating the document.</span>
+    <textarea id="outputSummary" rows="12" style="background: #fff; border: 2px solid var(--starling-teal);"></textarea>
+    
+    <button type="button" id="generatePdfBtn" class="drf-btn" onclick="submitToPdf()">Save & Generate PDF</button>
+    <div id="successArea" style="display:none; margin-top: 20px; padding: 15px; background: var(--starling-success-bg); border-radius: 8px; text-align: center; color: var(--starling-success-text);"></div>
+  </div>
+</div>
+
+<script>
+  let currentFormData = null;
+  let is120DayOverruled = false;
+
+  // --- THE MAGIC: AUTO-FILL FROM TQ STATE ---
+  function view_drf_init() {
+    confirmClearForm();
+    const txs = appState.selectedTransactions;
+    if (!txs || txs.length === 0) return;
+
+    // Convert TQ parsed JSON back into the raw format DRF uses
+    const formatTx = (tx) => `Date & Time: ${formatPrettyDate(tx.dateTime).split(',')[0]}\nCounterparty: ${tx.counterparty}\nTransaction Type: ${tx.transactionType}\nStatus: ${tx.status}\nGBP ${tx.amount}`;
+
+    // Auto-select Retail & GNR to reveal the form
+    document.getElementById('cardholderParticipation').value = 'Yes';
+    document.getElementById('disputeType').value = 'GNR';
+    checkFraudState();
+    toggleSections();
+
+    // Clear and Auto-Populate GNR Container
+    const gnrContainer = document.getElementById('gnrDisputedContainer');
+    gnrContainer.innerHTML = '';
+    txs.forEach((tx) => {
+       const div = document.createElement('div');
+       div.className = 'tx-group';
+       div.innerHTML = `
+         <label class="drf-label" style="margin-top:0;">Acquirer Reference (ARN) <span style="color:red;">*</span></label>
+         <input type="text" name="gnrArn" class="arn-input" placeholder="23-digit reference..." maxlength="23" oninput="triggerValidation()" required>
+         <label class="drf-label">Disputed Transaction: <span style="color:red;">*</span></label>
+         <textarea name="gnrDisputedTx" rows="4" oninput="validateTransactionInput(this, 'GNR'); triggerValidation();" required>${formatTx(tx)}</textarea>
+         <button type="button" class="drf-secondary-btn remove-btn" onclick="removeTransaction(this)">Remove</button>
+       `;
+       gnrContainer.appendChild(div);
+       validateTransactionInput(div.querySelector('textarea'), 'GNR');
+    });
+
+    // Auto-Populate CPA Unaware Container
+    const cpaContainer = document.getElementById('unawareDisputedContainer');
+    cpaContainer.innerHTML = '';
+    txs.forEach((tx) => {
+       const div = document.createElement('div');
+       div.className = 'tx-group';
+       div.innerHTML = `
+         <label class="drf-label" style="margin-top:0;">Acquirer Reference (ARN) <span style="color:red;">*</span></label>
+         <input type="text" name="cpaUnawareArn" class="arn-input" placeholder="23-digit reference..." maxlength="23" oninput="triggerValidation()" required>
+         <label class="drf-label">Disputed Transaction: <span style="color:red;">*</span></label>
+         <textarea name="cpaUnawareDisputedTx" rows="4" oninput="validateTransactionInput(this, 'CPA'); triggerValidation();" required>${formatTx(tx)}</textarea>
+         <button type="button" class="drf-secondary-btn remove-btn" onclick="removeTransaction(this)">Remove</button>
+       `;
+       cpaContainer.appendChild(div);
+    });
+    triggerValidation();
+  }
+  // ------------------------------------------
+
+ 
+  function confirmClearForm() { document.getElementById('disputeForm').reset(); document.getElementById('cardholderParticipation').value = ""; is120DayOverruled = false; document.querySelectorAll('.alert-box').forEach(el => el.style.display = 'none'); document.getElementById('resultArea').style.display = 'none'; toggleCpaInitial(); checkFraudState(); toggleSections(); }
+  function checkFraudState() { const val = document.getElementById('cardholderParticipation').value; document.getElementById('fraudWarning').style.display = (val === 'No') ? 'block' : 'none'; document.getElementById('mainFormWrapper').style.display = (val === 'Yes') ? 'block' : 'none'; triggerValidation(); }
+  function validateARN() { let allValid = true; document.querySelectorAll('.arn-input').forEach(input => { if (input.offsetParent !== null) { const val = input.value.trim(); if (val === '') { allValid = false; input.style.borderColor = ''; } else if (!/^\d{23}$/.test(val)) { allValid = false; input.style.borderColor = 'var(--starling-error-text)'; } else { input.style.borderColor = 'var(--starling-teal)'; } } }); document.getElementById('globalArnError').style.display = allValid ? 'none' : 'block'; return allValid; }
+  function triggerValidation() { const arnValid = validateARN(); const typeSelected = document.getElementById('disputeType').value !== ""; const fraudChecked = document.getElementById('cardholderParticipation').value === "Yes"; let emptyMandatory = false; if (typeSelected) { const activeSection = document.getElementById('disputeType').value === 'GNR' ? document.getElementById('gnrSection') : document.getElementById('cpaSection'); activeSection.querySelectorAll('input, textarea, select').forEach(el => { if (el.hasAttribute('required') && el.offsetParent !== null && el.value.trim() === '') emptyMandatory = true; }); } const previewBtn = document.getElementById('previewBtn'); if ((!typeSelected || emptyMandatory || !arnValid) && fraudChecked) { previewBtn.disabled = true; } else { previewBtn.disabled = false; } }
+  function validateTransactionInput(element, section) { const text = element.value; if (!text.trim()) return; google.script.run.withSuccessHandler(function(tx) { const blockBox = (section === 'GNR') ? document.getElementById('gnrMerchantBlock') : document.getElementById('cpaMerchantBlock'); if (tx.isBlocked) { blockBox.innerHTML = `🛑 <strong>Stop:</strong> We cannot raise chargebacks for ${tx.merchant}.`; blockBox.style.display = 'block'; } else { blockBox.style.display = 'none'; } const statusBox = (section === 'GNR') ? document.getElementById('gnrStatusError') : document.getElementById('cpaStatusError'); statusBox.style.display = (tx.status && tx.status !== 'SETTLED') ? 'block' : 'none'; }).parseTransaction(text); }
+  function toggleSections() { const type = document.getElementById('disputeType').value; document.getElementById('gnrSection').style.display = (type === 'GNR') ? 'block' : 'none'; document.getElementById('cpaSection').style.display = (type === 'CPA') ? 'block' : 'none'; document.getElementById('resultArea').style.display = 'none'; if (type === 'CPA') toggleCpaFields(); triggerValidation(); }
+  function toggleCpaInitial() { const isChecked = document.getElementById('cpaNoInitialTx').checked; const input = document.getElementById('cpaInitialTxInput'); if (isChecked) { input.disabled = true; input.value = ''; input.removeAttribute('required'); input.style.background = '#e9ecef'; } else { input.disabled = false; input.setAttribute('required', 'required'); input.style.background = '#ffffff'; } triggerValidation(); }
+  function toggleExpectedDate() { const isNA = document.getElementById('gnrExpectedDateNA').checked; const dateInput = document.getElementById('gnrExpectedDate'); dateInput.disabled = isNA; dateInput.value = isNA ? '' : dateInput.value; dateInput.style.background = isNA ? '#e9ecef' : '#ffffff'; triggerValidation(); }
+  function toggleCpaFields() { const issue = document.getElementById('cpaIssue').value; document.getElementById('cpaUnawareFields').style.display = (issue === 'Unaware') ? 'block' : 'none'; document.getElementById('cpaCancelledFields').style.display = (issue === 'Previously Cancelled') ? 'block' : 'none'; triggerValidation(); }
+  function removeTransaction(btn) { btn.closest('.tx-group').remove(); triggerValidation(); }
+  function triggerPreview() { const form = document.getElementById('disputeForm'); const previewBtn = document.getElementById('previewBtn'); const formData = new FormData(form); const data = Object.fromEntries(formData.entries()); previewBtn.innerText = 'Generating Preview...'; previewBtn.disabled = true; data.cardholderParticipation = document.getElementById('cardholderParticipation').value; data.disputeType = document.getElementById('disputeType').value; data.cpaIssue = document.getElementById('cpaIssue').value; data.cpaNoInitialTx = document.getElementById('cpaNoInitialTx').checked; data.gnrExpectedDateNA = document.getElementById('gnrExpectedDateNA').checked; data.gnrDisputedTxs = formData.getAll('gnrDisputedTx'); data.gnrArns = formData.getAll('gnrArn'); data.cpaUnawareDisputedTxs = formData.getAll('cpaUnawareDisputedTx'); data.cpaUnawareArns = formData.getAll('cpaUnawareArn'); currentFormData = data; google.script.run.withSuccessHandler(showPreview).generateSummary(data); }
+  function showPreview(summary) { const previewBtn = document.getElementById('previewBtn'); previewBtn.innerText = 'Update Preview'; previewBtn.disabled = false; document.getElementById('resultArea').style.display = 'block'; document.getElementById('outputSummary').value = summary; document.getElementById('resultArea').scrollIntoView({ behavior: 'smooth' }); }
+  function submitToPdf() { const pdfBtn = document.getElementById('generatePdfBtn'); const finalSummary = document.getElementById('outputSummary').value; pdfBtn.innerText = 'Generating Document...'; pdfBtn.disabled = true; google.script.run.withSuccessHandler(handlePdfResult).createPdfDocument(currentFormData, finalSummary); }
+  function handlePdfResult(result) { const pdfBtn = document.getElementById('generatePdfBtn'); pdfBtn.innerText = 'Save & Generate PDF'; pdfBtn.disabled = false; const successArea = document.getElementById('successArea'); successArea.style.display = 'block'; if (result.success) { successArea.innerHTML = `✅ Document generated successfully! <br><br><a href="${result.url}" target="_blank">Click here to view the PDF in Google Drive</a>`; } else { successArea.innerHTML = `❌ Error creating document: ${result.error}`; } }
+</script>
+</div>
