@@ -1,0 +1,315 @@
+// ==========================================
+// CONFIGURATION VARIABLES
+// ==========================================
+const TEMPLATE_DOC_ID = '1leFxJNCjjm9oPrNIUD01WL5Somh9yiNxPFYBMENzlL4';
+const DESTINATION_FOLDER_ID = '1aakeQGa9Wf2O23B67kDNP2B4x_jlJTR5';
+const LOG_SHEET_ID = '1HsBbRckltcshSgV7i_bDqP7aYn6yMY_O6EXlwgobLgg';
+
+const BLOCKED_MERCHANTS = {
+  bnpl: ['affirm', 'shop pay', 'clearpay', 'afterpay', 'divide buy', 'kalabash', 'klarna', 'laybuy', 'payl8r', 'revolut', 'splitit', 'zilch', 'zip'],
+  moneyTransfer: ['afriex', 'cash app', 'collectiv', 'gohenry', 'instarem', 'lemfi', 'lemonade finance', 'manigo', 'money gram', 'moni', 'monisapp', 'monzo.me', 'myguava', 'neteller', 'payoneer', 'paysend', 'profee', 'remitco', 'remitly', 'ria financial', 'skrill', 'square cash', 'talkremit', 'tap tap', 'tazapay', 'transfergo', 'wallet whale', 'wave', 'western union', 'wise', 'transferwise', 'worldfirst', 'world remit', 'xe', 'hifx', 'xoom'],
+  gambling: ['betfred', 'bet365', 'ladbrokes', 'betvictor', 'paddy power', 'william hill', 'betfair', 'coral', '888', 'ninewin', '18f7casino', 'go2f7casino']
+};
+
+function checkMerchantRestriction(merchantName) {
+  if (!merchantName) return { blocked: false };
+  let name = merchantName.toLowerCase();
+  
+  for (let m of BLOCKED_MERCHANTS.bnpl) {
+    if (name.includes(m)) return { blocked: true, reason: 'Buy Now, Pay Later (BNPL)' };
+  }
+  for (let m of BLOCKED_MERCHANTS.moneyTransfer) {
+    if (name.includes(m)) return { blocked: true, reason: 'Money Transfer Service' };
+  }
+  for (let m of BLOCKED_MERCHANTS.gambling) {
+    if (name.includes(m)) return { blocked: true, reason: 'Gambling' };
+  }
+  return { blocked: false };
+}
+
+function parseTransaction(text) {
+  if (!text) return { date: "[Date]", merchant: "[Merchant]", amount: "[Amount]", currency: "GBP", status: "", daysPassed: 0, isBlocked: false, blockReason: "" };
+  
+  let dateMatch = text.match(/Date & Time:\s*(\d{2}\/\d{2}\/\d{4})/i);
+  let merchantMatch = text.match(/Counterparty:\s*(.+)/i);
+  let statusMatch = text.match(/Status:\s*(.+)/i);
+  
+  let amountMatch = text.match(/([A-Z]{3})\s+([\d,]+\.\d{2})/i) || text.match(/([\d,]+\.\d{2})/);
+  let currency = "GBP";
+  let amount = "[Amount]";
+  
+  if (amountMatch) {
+    if (amountMatch.length === 3) {
+      currency = amountMatch[1];
+      amount = amountMatch[2];
+    } else {
+      amount = amountMatch[1];
+    }
+  }
+
+  let merchant = merchantMatch ? merchantMatch[1].trim() : "[Merchant]";
+  let restriction = checkMerchantRestriction(merchant);
+  let dateStr = dateMatch ? dateMatch[1] : "[Date]";
+  let daysPassed = 0;
+  
+  if (dateMatch) {
+    let parts = dateStr.split('/');
+    if (parts.length === 3) {
+      let txDateObj = new Date(parts[2], parts[1] - 1, parts[0]);
+      daysPassed = Math.floor(Math.abs(new Date() - txDateObj) / (1000 * 60 * 60 * 24));
+    }
+  }
+  
+  return {
+    date: dateStr,
+    merchant: merchant,
+    currency: currency,
+    amount: amount,
+    status: statusMatch ? statusMatch[1].trim().toUpperCase() : "",
+    daysPassed: daysPassed,
+    isBlocked: restriction.blocked,
+    blockReason: restriction.reason || ""
+  };
+}
+
+function generateSummary(formObject) {
+  let summary = "";
+  
+  if (formObject.disputeType === "GNR") {
+    let parsedList = (formObject.gnrDisputedTxs || []).map(t => parseTransaction(t));
+    let arnList = formObject.gnrArns || [];
+    let pType = (formObject.gnrPurchaseType || "goods").toLowerCase(); 
+    
+    let totalAmount = 0;
+    parsedList.forEach(p => {
+       let val = parseFloat(p.amount.replace(/,/g, ''));
+       if (!isNaN(val)) totalAmount += val;
+    });
+
+    if (parsedList.length === 1) {
+      let tx = parsedList[0];
+      summary = `The cardholder paid £${tx.amount} for ${formObject.gnrPurchasedItems} from ${tx.merchant} on ${tx.date} (ARN: ${arnList[0] || "N/A"}). `;
+    } else if (parsedList.length > 1) {
+      let tx = parsedList[0];
+      summary = `The cardholder paid a total of £${totalAmount.toFixed(2)} for ${formObject.gnrPurchasedItems} from ${tx.merchant} across the following ${parsedList.length} transactions:\n`;
+      parsedList.forEach((p, i) => {
+        summary += `- Date: ${p.date} | Amount: £${p.amount} | ARN: ${arnList[i] || "N/A"}\n`;
+      });
+      summary += `\n`;
+    }
+    
+    if (!formObject.gnrExpectedDateNA && formObject.gnrExpectedDate) {
+      summary += pType === "services" ? `The expected date of service was ${formObject.gnrExpectedDate}. ` : `The expected delivery date was ${formObject.gnrExpectedDate}. `;
+    }
+    
+    if (formObject.gnrTrackingStatus === "Delivered") {
+      summary += `Courier tracking indicates goods were successfully delivered, however the cardholder confirms that nothing was received. The cardholder contacted the merchant on ${formObject.gnrContactDate}, but ${formObject.gnrMerchantResponse}.`;
+    } else {
+      if (formObject.gnrExpectedDateNA) {
+        summary += `The ${pType} paid for have not been provided. `;
+      } else if (formObject.gnrExpectedDate) {
+        summary += `This date has passed, and the ${pType} paid for have not been provided. `;
+      } else {
+        summary += `The expected ${pType === "services" ? "date of service" : "delivery date"} has passed, and the ${pType} paid for have not been provided. `;
+      }
+      summary += `The cardholder contacted the merchant on ${formObject.gnrContactDate}, but ${formObject.gnrMerchantResponse}.`;
+    }
+    
+  } else if (formObject.disputeType === "CPA") {
+    
+    if (formObject.cpaIssue === "Unaware") {
+      if (formObject.cpaNoInitialTx === true || formObject.cpaNoInitialTx === "true") {
+        let merchantName = "the merchant";
+        if (formObject.cpaUnawareDisputedTxs && formObject.cpaUnawareDisputedTxs.length > 0) {
+            let firstDispTx = parseTransaction(formObject.cpaUnawareDisputedTxs[0]);
+            if (firstDispTx.merchant && firstDispTx.merchant !== "[Merchant]") {
+                merchantName = firstDispTx.merchant;
+            }
+        }
+        summary = `The cardholder was unaware that they were signing up to a recurring payment with ${merchantName}, as this was not clearly disclosed. They have subsequently been debited subscription payments. `;
+      } else {
+        let initTx = parseTransaction(formObject.cpaInitialTx);
+        summary = `The cardholder agreed to an initial one-off debit of £${initTx.amount} for ${initTx.merchant} on ${initTx.date}, however they have subsequently been debited further subscription payments. The cardholder was unaware that they were signing up to a recurring payment, as this was not clearly disclosed by the merchant. `;
+      }
+      
+      if (formObject.cpaUnawareDisputedTxs && formObject.cpaUnawareDisputedTxs.length > 0) {
+        let parsedList = formObject.cpaUnawareDisputedTxs.map(txText => parseTransaction(txText));
+        let arnList = formObject.cpaUnawareArns || [];
+        
+        if (parsedList.length === 1) {
+          summary += `\n\nThe cardholder is disputing the subsequent payment of £${parsedList[0].amount} on ${parsedList[0].date} (ARN: ${arnList[0] || "N/A"}).`;
+        } else {
+          summary += `\n\nThe cardholder is disputing the following ${parsedList.length} subsequent payments:\n`;
+          parsedList.forEach((p, i) => {
+            summary += `- Date: ${p.date} | Amount: £${p.amount} | ARN: ${arnList[i] || "N/A"}\n`;
+          });
+        }
+      }
+      
+    } else if (formObject.cpaIssue === "Previously Cancelled") {
+      if (formObject.cpaCancelledDisputedTxs && formObject.cpaCancelledDisputedTxs.length > 0) {
+        let parsedList = formObject.cpaCancelledDisputedTxs.map(txText => parseTransaction(txText));
+        let arnList = formObject.cpaCancelledArns || [];
+        let firstTx = parsedList[0];
+        
+        summary = `The cardholder cancelled this recurring payment with ${firstTx.merchant} on ${formObject.cpaCancelDate}. Despite this, the cardholder was debited further payments. `;
+        
+        if (parsedList.length === 1) {
+          summary += `\n\nThe cardholder is disputing the subsequent payment of £${parsedList[0].amount} on ${parsedList[0].date} (ARN: ${arnList[0] || "N/A"}).`;
+        } else {
+          summary += `\n\nThe cardholder is disputing the following ${parsedList.length} subsequent payments:\n`;
+          parsedList.forEach((p, i) => {
+            summary += `- Date: ${p.date} | Amount: £${p.amount} | ARN: ${arnList[i] || "N/A"}\n`;
+          });
+        }
+      }
+    }
+  }
+
+  if (formObject.is120DayOverruled === true || String(formObject.is120DayOverruled) === "true") {
+    if (formObject.overruleReason) {
+      summary += `\n\nWhilst the payment date is outside of the usual chargeback timeframes, the claim has still been submitted because ${formObject.overruleReason}.`;
+    }
+  }
+  
+  return summary;
+}
+
+function createPdfDocument(formObject, finalSummary) {
+  try {
+    const templateFile = DriveApp.getFileById(TEMPLATE_DOC_ID);
+    const destinationFolder = DriveApp.getFolderById(DESTINATION_FOLDER_ID);
+    
+    let txDates = [];
+    let amounts = [];
+    let arns = [];
+    let totalAmountNum = 0;
+    let merchant = "[Merchant]";
+    let currency = "GBP";
+
+    if (formObject.disputeType === "GNR") {
+      let txs = formObject.gnrDisputedTxs || [];
+      let arnInputs = formObject.gnrArns || [];
+      
+      txs.forEach((t, i) => {
+        let tx = parseTransaction(t);
+        txDates.push(tx.date);
+        amounts.push(tx.amount);
+        arns.push(arnInputs[i] || "N/A");
+        
+        let val = parseFloat(tx.amount.replace(/,/g, ''));
+        if (!isNaN(val)) totalAmountNum += val;
+        
+        merchant = tx.merchant;
+        currency = tx.currency;
+      });
+      
+    } else if (formObject.disputeType === "CPA") {
+      let txs = [];
+      let arnInputs = [];
+      
+      if (formObject.cpaIssue === "Unaware") {
+        txs = formObject.cpaUnawareDisputedTxs || [];
+        arnInputs = formObject.cpaUnawareArns || [];
+      } else {
+        txs = formObject.cpaCancelledDisputedTxs || [];
+        arnInputs = formObject.cpaCancelledArns || [];
+      }
+      
+      txs.forEach((t, i) => {
+        let tx = parseTransaction(t);
+        txDates.push(tx.date);
+        amounts.push(tx.amount);
+        arns.push(arnInputs[i] || "N/A");
+        
+        let val = parseFloat(tx.amount.replace(/,/g, ''));
+        if (!isNaN(val)) totalAmountNum += val;
+        
+        merchant = tx.merchant;
+        currency = tx.currency;
+      });
+    }
+    
+    let displayTxDate = txDates.join(",\n");
+    let displayArn = arns.join(",\n");
+    let displayAmount = amounts.join(",\n");
+    
+    if (amounts.length > 1) {
+      displayAmount += `\n(Total: ${totalAmountNum.toFixed(2)})`;
+    }
+    
+    let disputeTypeStr = "Goods or services were not provided";
+    if (formObject.disputeType === "CPA") {
+      disputeTypeStr = formObject.cpaIssue === "Unaware" ? "Subscription Unaware" : "Subscription Previously Cancelled";
+    }
+
+    let expectedDateStr = (formObject.disputeType === "GNR" && !formObject.gnrExpectedDateNA && formObject.gnrExpectedDate) 
+                          ? formObject.gnrExpectedDate : "N/A";
+    
+    let tempFile = templateFile.makeCopy(`Dispute_${merchant}_${txDates[0] || "Date"}`, destinationFolder);
+    let tempDoc = DocumentApp.openById(tempFile.getId());
+    let body = tempDoc.getBody();
+    
+    body.replaceText("{{ARN}}", displayArn);
+    body.replaceText("{{MERCHANT}}", merchant);
+    body.replaceText("{{TX_DATE}}", displayTxDate);
+    body.replaceText("{{AMOUNT}}", displayAmount);
+    body.replaceText("{{CURRENCY_CD}}", currency);
+    body.replaceText("{{DIS_TYPE}}", disputeTypeStr);
+    body.replaceText("{{EX_DD}}", expectedDateStr);
+    body.replaceText("{{CHP}}", formObject.cardholderParticipation);
+    body.replaceText("{{DETAILS}}", finalSummary);
+    
+    tempDoc.saveAndClose();
+    
+    let pdfBlob = tempFile.getAs(MimeType.PDF);
+    let finalPdf = destinationFolder.createFile(pdfBlob);
+    
+    finalPdf.setSharing(DriveApp.Access.DOMAIN_WITH_LINK, DriveApp.Permission.VIEW);
+    tempFile.setTrashed(true);
+
+    // Logging to Google Sheets if an Overrule occurred
+    if (formObject.is120DayOverruled === true || String(formObject.is120DayOverruled) === "true") {
+      try {
+        let ss = SpreadsheetApp.openById(LOG_SHEET_ID);
+        let sheet = ss.getSheetByName('Sheet1');
+        if (!sheet) {
+          sheet = ss.getSheets()[0]; // Fallback if renamed
+        }
+        
+        // Add headers if sheet is completely blank
+        if (sheet.getLastRow() === 0) {
+          sheet.appendRow(["Timestamp", "Merchant", "Disputed Date(s)", "Total Amount", "ARN(s)", "Override Reason", "PDF Link"]);
+          sheet.getRange(1, 1, 1, 7).setFontWeight("bold").setBackground("#F4F5F7");
+        }
+        
+        let sheetTxDate = displayTxDate.replace(/\n/g, ' ');
+        let sheetArn = displayArn.replace(/\n/g, ' ');
+        
+        sheet.appendRow([
+          new Date(),
+          merchant,
+          sheetTxDate,
+          totalAmountNum.toFixed(2),
+          sheetArn,
+          formObject.overruleReason,
+          finalPdf.getUrl()
+        ]);
+      } catch (e) {
+        console.error("Sheet Logging Error: " + e.toString());
+      }
+    }
+    
+    return { success: true, url: finalPdf.getUrl() };
+  } catch (error) {
+    return { success: false, error: error.toString() };
+  }
+}
+
+// ------------------------------------------------------------------
+// REQUIRED TO TRIGGER AUTHORIZATION FOR SPREADSHEET ACCESS
+// ------------------------------------------------------------------
+function setupAuthorization() {
+  let ss = SpreadsheetApp.openById(LOG_SHEET_ID);
+  Logger.log(ss.getName());
+}
