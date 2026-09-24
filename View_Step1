@@ -103,3 +103,23 @@
   </div>
 </div>
 
+<!-- <div id="view-wallet-biometric" class="view-section">
+  <h2 style="margin-bottom: 8px;">Mobile Wallet (In-Person)</h2>
+  <p style="color: var(--starling-text-light); margin-bottom: 24px;">This payment was authenticated in person using the device's biometrics or passcode.</p>
+
+  <div style="background: var(--starling-warning-bg); border-left: 4px solid var(--starling-warning-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px;">
+    <h4 style="color: var(--starling-warning-text); margin: 0 0 8px 0; font-size: 15px;">🛑 Agent Action: Pushback Script</h4>
+    <p style="font-size: 14px; color: var(--starling-text); margin-bottom: 12px;">Read or copy this polite pushback to the customer. Because this requires physical possession of the unlocked device, it is highly unlikely to be fraud.</p>
+    
+    <div style="background: #fff; border-left: 4px solid var(--starling-error-text); padding: 12px; font-style: italic; font-size: 14px; color: var(--starling-text); margin-bottom: 12px; box-shadow: 0 2px 4px rgba(0,0,0,0.02);">
+      "This payment was completed in person using your digital wallet. This is a highly secure method that requires your physical device and your personal biometric approval (like Face ID or your fingerprint) or passcode to authorise. Because of this, it's highly unlikely we can raise this as a fraud claim. Could someone else with access to your device have made this purchase?"
+    </div>
+  </div>
+
+  <h3 style="font-size: 16px; color: var(--starling-navy); margin-bottom: 12px;">What is the outcome?</h3>
+  <div style="display: flex; gap: 12px;">
+    <button class="btn-secondary" style="flex: 1;" onclick="appState.flags.outcome = 'retail'; navigateToView('view-outcomes')">They recognise it (Retail/Close)</button>
+    <!-- If they insist their physical phone was stolen prior to the payment, route to lost/stolen -->
+    <!-- <button class="btn-secondary" style="flex: 1; border-color: var(--starling-error-text); color: var(--starling-error-text);" onclick="appState.flags.outcome = 'lost_stolen'; navigateToView('view-outcomes')">Device was stolen</button>
+  </div>
+</div> --> 
