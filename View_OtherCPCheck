@@ -163,15 +163,25 @@
     </div>
   </div>
 
-  <!-- SHARED TERMINAL PIVOT -->
+ <!-- SHARED TERMINAL PIVOT -->
   <div id="cp-pivot-end" style="display: none; background: var(--starling-bg); border-left: 4px solid var(--starling-warning-text); padding: 16px; border-radius: 0 8px 8px 0; margin-bottom: 24px; animation: fadeIn 0.4s ease;">
-    <h4 style="color: var(--starling-warning-text); margin: 0 0 8px 0; font-size: 15px;">⚠️ Fraud Unlikely - Pivot to Merchant Identification</h4>
+    <h4 style="color: var(--starling-warning-text); margin: 0 0 8px 0; font-size: 15px;">🛑 Fraud Unlikely - Pivot to Merchant Identification</h4>
     <p style="font-size: 14px; color: var(--starling-text); margin-bottom: 16px;">Based on the evidence, we cannot raise a fraud claim. Use the tools below to help the customer identify the payment.</p>
     
+    <!-- Smart History Badge -->
+    <div id="cp-history-badge" onclick="openHistoryModal()" style="display: none; margin-bottom: 16px; padding: 10px 14px; background: var(--starling-warning-bg); border: 1px solid var(--starling-warning-text); border-radius: 8px; color: var(--starling-warning-text); font-size: 13px; font-weight: 600; align-items: center; gap: 8px; cursor: pointer;">
+      <span style="font-size: 16px;">🕰️</span> 
+      <span id="cp-history-text" style="flex: 1;"></span>
+      <span>👁️ View History</span>
+    </div>
+
+    <!-- Investigation Tools -->
     <div style="display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 24px;">
       <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="executeGoogleSearch()">🔍 Google Search</button>
       <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openMacroModal()">📚 Scripts & Macros</button>
+      <button class="btn-secondary" style="flex: 1; min-width: 150px; display: flex; justify-content: center; align-items: center; gap: 8px;" onclick="openManualSearchModal()">🔎 Search Statement</button>
     </div>
+
     <button class="btn-primary" style="width: 100%;" onclick="appState.flags.outcome = 'retail'; navigateToView('view-outcomes')">End Investigation (Route to Retail / Close) →</button>
   </div>
 </div>
