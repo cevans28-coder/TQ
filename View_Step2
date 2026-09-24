@@ -98,4 +98,5 @@
         <button class="btn-secondary" style="flex: 1;" onclick="appState.flags.outcome = 'retail'; navigateToView('view-outcomes')">No -> End Process</button>
       </div>
     </div>
+   </div>
   </div>
