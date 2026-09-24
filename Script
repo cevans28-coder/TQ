@@ -75,6 +75,9 @@
     if (viewId === 'view-holding') view_holding_init();
     if (viewId === 'view-outcomes') view_outcomes_init();
     if (viewId === 'view-pos-check') view_pos_check_init();
+    if (viewId === 'view-contactless-check') view_contactless_check_init();
+    if (viewId === 'view-other-cp-check') view_other_cp_check_init();
+    if (viewId === 'view-drf') view_drf_init();
   }
 
   function goBack() {
@@ -921,40 +924,32 @@ function renderTransactionTable(transactions) {
     }
   };
 
- function view_outcomes_init() {
+  function view_outcomes_init() {
     const outcomeKey = appState.flags.outcome;
     const config = OUTCOME_CONFIG[outcomeKey] || OUTCOME_CONFIG['fraud'];
     
-    const iconEl = document.getElementById('outcome-icon');
-    if (iconEl) iconEl.innerText = config.icon;
-    
-    const titleEl = document.getElementById('outcome-title');
-    if (titleEl) titleEl.innerText = config.title;
-    
-    const descEl = document.getElementById('outcome-desc');
-    if (descEl) descEl.innerText = config.desc;
+    document.getElementById('outcome-icon').innerText = config.icon;
+    document.getElementById('outcome-title').innerText = config.title;
+    document.getElementById('outcome-desc').innerText = config.desc;
     
     const launchBtn = document.getElementById('btn-launch-tool');
-    if (launchBtn) {
-      if (config.toolName && config.url) {
-        launchBtn.style.display = 'flex';
-        launchBtn.innerHTML = `🚀 Launch ${config.toolName}`;
-        launchBtn.dataset.url = config.url;
-      } else {
-        launchBtn.style.display = 'none';
-      }
+    if (config.toolName && config.url) {
+      launchBtn.style.display = 'flex';
+      launchBtn.innerHTML = `🚀 Launch ${config.toolName}`;
+      launchBtn.dataset.url = config.url;
+    } else {
+      launchBtn.style.display = 'none';
     }
   }
+
   function launchHandoffTool() {
-    const baseUrl = document.getElementById('btn-launch-tool').dataset.url;
-    const params = new URLSearchParams({
-      amount: appState.parsedData.amount || "",
-      merchant: appState.parsedData.counterparty || "",
-      type: appState.parsedData.transactionType || "",
-      outcome: appState.flags.outcome
-    }).toString();
-    
-    window.open(`${baseUrl}?${params}`, '_blank');
+    if (appState.flags.outcome === 'retail') {
+       navigateToView('view-drf'); // Launch inline DRF tool
+    } else {
+       // Your legacy URL router for Fraud/Scam tools
+       const baseUrl = document.getElementById('btn-launch-tool').dataset.url;
+       window.open(baseUrl, '_blank');
+    }
   }
 
   function copyEscalationText() {
@@ -1306,5 +1301,16 @@ function showContactlessPushback(reason) {
     
     // Show terminal identification block
     document.getElementById('cp-pivot-end').style.display = 'block';
+
+    // Populate the History Badge dynamically
+    const historyBadge = document.getElementById('cp-history-badge');
+    const historyText = document.getElementById('cp-history-text');
+    
+    if (appState.flags.historyString) {
+      if (historyText) historyText.innerText = appState.flags.historyString;
+      if (historyBadge) historyBadge.style.display = 'flex';
+    } else {
+      if (historyBadge) historyBadge.style.display = 'none';
+    }
   }
 </script>
